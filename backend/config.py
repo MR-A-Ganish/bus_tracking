@@ -15,10 +15,17 @@ load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 DB_CONFIG = {
     "host": os.environ.get("DB_HOST", "localhost"),
+    "port": int(os.environ.get("DB_PORT", "3306")),
     "user": os.environ.get("DB_USER", "root"),
     "password": os.environ.get("DB_PASSWORD", ""),
     "database": os.environ.get("DB_NAME", "smart_bus_system"),
 }
+
+# Managed MySQL hosts (Aiven, PlanetScale, etc.) require TLS. Set DB_USE_SSL=true
+# in that environment's variables; local MySQL needs nothing extra here.
+if os.environ.get("DB_USE_SSL", "false").lower() == "true":
+    DB_CONFIG["ssl_disabled"] = False
+    DB_CONFIG["ssl_verify_cert"] = False
 
 # Secret key used to sign session cookies. Set a real random value via the
 # SECRET_KEY env var in any shared/deployed environment.

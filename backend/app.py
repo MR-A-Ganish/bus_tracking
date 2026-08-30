@@ -41,6 +41,13 @@ app.register_blueprint(notifications_bp)
 app.register_blueprint(admin_bp)
 app.register_blueprint(driver_bp)
 
+# Started at import time (not just under `if __name__ == "__main__"`) so it
+# also runs under a production WSGI server like gunicorn, which imports this
+# module and never executes the block below. Run with a single worker
+# (gunicorn --workers 1) - each worker would otherwise start its own copy of
+# this thread and double-tick every bus.
+start_background_simulation()
+
 
 # ---------------------------------------------------------------
 # Serve the frontend (plain HTML/CSS/JS) directly from Flask so the
@@ -69,7 +76,6 @@ def _lan_ip():
 
 
 if __name__ == "__main__":
-    start_background_simulation()
     lan_ip = _lan_ip()
     print("=" * 68)
     print("Smart College Bus System backend running")
