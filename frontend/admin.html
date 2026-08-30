@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Management Dashboard - Smart College Bus System</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="logo-dot">🚌</div>
+    <div>
+      <h1>Smart College Bus System</h1>
+      <small>Management Dashboard</small>
+    </div>
+  </div>
+  <div class="user-info">
+    <span class="avatar" id="admin-avatar">?</span>
+    <span id="admin-name">Loading...</span>
+    <button id="logout-btn">Logout</button>
+  </div>
+</div>
+
+<div class="container">
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="overview">📊 Overview</button>
+    <button class="tab-btn" data-tab="map">🗺️ Fleet Map</button>
+    <button class="tab-btn" data-tab="buses">🚌 Buses</button>
+    <button class="tab-btn" data-tab="students">🎓 Students</button>
+    <button class="tab-btn" data-tab="drivers">🧑‍✈️ Drivers</button>
+    <button class="tab-btn" data-tab="admins">🛡️ Admins</button>
+    <button class="tab-btn" data-tab="attendance">✅ Attendance</button>
+  </div>
+
+  <!-- ===================== OVERVIEW ===================== -->
+  <div class="tab-panel active" id="tab-overview">
+    <div class="grid cols-3" style="margin-bottom:18px;">
+      <div class="card stat-card">
+        <div><h2>Total Buses</h2><div class="metric" id="total-buses">-</div></div>
+        <div class="stat-icon">🚌</div>
+      </div>
+      <div class="card stat-card">
+        <div><h2>Active Buses</h2><div class="metric" id="active-buses">-</div><small class="small-muted">moving / waiting / arrived</small></div>
+        <div class="stat-icon">📡</div>
+      </div>
+      <div class="card stat-card">
+        <div><h2>Total Passengers Today</h2><div class="metric" id="total-passengers">-</div></div>
+        <div class="stat-icon">🎓</div>
+      </div>
+      <div class="card stat-card">
+        <div><h2>College Entries Today</h2><div class="metric" id="college-entries">-</div></div>
+        <div class="stat-icon">🏫</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:18px;">
+      <h2>Buses &amp; Live Status</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Bus</th><th>Tracking</th><th>Status</th><th>Current Stop</th><th>Next Stop</th>
+              <th>Traffic</th><th>Passengers</th><th>College Entry</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="buses-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Notifications</h2>
+      <ul class="notif-list" id="notif-list"><li class="small-muted">No notifications yet.</li></ul>
+    </div>
+  </div>
+
+  <!-- ===================== FLEET MAP ===================== -->
+  <div class="tab-panel" id="tab-map">
+    <div class="card map-card">
+      <div class="map-card-head"><h2>Live Fleet Map</h2></div>
+      <div id="fleet-map"></div>
+      <div class="map-legend">
+        <span><i style="background:var(--primary);"></i> Moving</span>
+        <span><i style="background:var(--warning);"></i> Waiting / at stop</span>
+        <span><i style="background:var(--success);"></i> Reached college</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== BUSES ===================== -->
+  <div class="tab-panel" id="tab-buses">
+    <div class="card" style="margin-bottom:18px;">
+      <h2 id="bus-form-title">Add a Bus</h2>
+      <div class="alert" id="bus-alert"></div>
+      <form id="bus-form">
+        <div class="form-grid">
+          <div class="field"><label for="bus-name">Bus name</label><input type="text" id="bus-name" required></div>
+          <div class="field"><label for="bus-driver">Driver name</label><input type="text" id="bus-driver"></div>
+          <div class="field"><label for="bus-capacity">Capacity</label><input type="number" id="bus-capacity" value="50" min="1" required></div>
+          <div class="field"><label for="bus-route">Route</label><select id="bus-route" required></select></div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn" id="bus-submit-btn">Add Bus</button>
+          <button type="button" class="btn ghost" id="bus-cancel-btn" style="display:none;">Cancel edit</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card" style="margin-bottom:18px;">
+      <h2>All Buses</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Bus</th><th>Driver</th><th>Capacity</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="manage-buses-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Route Optimization (Bus 01)</h2>
+      <p class="small-muted" id="route-opt-summary">Loading...</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>From</th><th>To</th><th>Road</th><th>Min</th></tr></thead>
+          <tbody id="route-opt-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== STUDENTS ===================== -->
+  <div class="tab-panel" id="tab-students">
+    <div class="card" style="margin-bottom:18px;">
+      <h2 id="student-form-title">Add a Student</h2>
+      <div class="alert" id="student-alert"></div>
+      <form id="student-form">
+        <div class="form-grid">
+          <div class="field"><label for="student-username">Username</label><input type="text" id="student-username" required></div>
+          <div class="field"><label for="student-password">Password</label><input type="password" id="student-password" placeholder="Required when creating"></div>
+          <div class="field"><label for="student-name-input">Full name</label><input type="text" id="student-name-input" required></div>
+          <div class="field"><label for="student-regno">Register no.</label><input type="text" id="student-regno"></div>
+          <div class="field"><label for="student-phone">Phone</label><input type="text" id="student-phone"></div>
+          <div class="field"><label for="student-bus">Bus</label><select id="student-bus"></select></div>
+          <div class="field"><label for="student-stop">Stop</label><select id="student-stop"></select></div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn" id="student-submit-btn">Add Student</button>
+          <button type="button" class="btn ghost" id="student-cancel-btn" style="display:none;">Cancel edit</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>All Students</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Username</th><th>Name</th><th>Register No.</th><th>Bus</th><th>Stop</th><th>Actions</th></tr></thead>
+          <tbody id="manage-students-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== DRIVERS ===================== -->
+  <div class="tab-panel" id="tab-drivers">
+    <div class="card" style="margin-bottom:18px;">
+      <h2>Add a Driver</h2>
+      <div class="alert" id="driver-form-alert"></div>
+      <form id="driver-form">
+        <div class="form-grid">
+          <div class="field"><label for="driver-username">Username</label><input type="text" id="driver-username" required></div>
+          <div class="field"><label for="driver-password">Password</label><input type="password" id="driver-password" placeholder="Required when creating"></div>
+          <div class="field"><label for="driver-name-input">Full name</label><input type="text" id="driver-name-input" required></div>
+          <div class="field"><label for="driver-phone">Phone</label><input type="text" id="driver-phone"></div>
+          <div class="field"><label for="driver-license">License no.</label><input type="text" id="driver-license"></div>
+          <div class="field"><label for="driver-bus">Assigned bus</label><select id="driver-bus"><option value="">Unassigned</option></select></div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn" id="driver-submit-btn">Add Driver</button>
+          <button type="button" class="btn ghost" id="driver-cancel-btn" style="display:none;">Cancel edit</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>All Drivers</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Username</th><th>Name</th><th>Phone</th><th>License</th><th>Bus</th><th>Actions</th></tr></thead>
+          <tbody id="manage-drivers-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== ADMINS ===================== -->
+  <div class="tab-panel" id="tab-admins">
+    <div class="card" style="margin-bottom:18px;">
+      <h2>Add an Admin</h2>
+      <div class="alert" id="admin-form-alert"></div>
+      <form id="admin-form">
+        <div class="form-grid">
+          <div class="field"><label for="admin-username">Username</label><input type="text" id="admin-username" required></div>
+          <div class="field"><label for="admin-password">Password</label><input type="password" id="admin-password" required></div>
+          <div class="field"><label for="admin-name-input">Full name</label><input type="text" id="admin-name-input" required></div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn">Add Admin</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>All Admins</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Username</th><th>Name</th><th>Actions</th></tr></thead>
+          <tbody id="manage-admins-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== ATTENDANCE ===================== -->
+  <div class="tab-panel" id="tab-attendance">
+    <div class="card">
+      <h2>Attendance Today</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Student</th><th>Bus</th><th>Stop</th><th>Time</th></tr></thead>
+          <tbody id="attendance-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="js/admin.js"></script>
+</body>
+</html>

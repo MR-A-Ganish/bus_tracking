@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+*.egg-info/
+
+# Secrets - never commit real credentials
+backend/.env
+
+# Generated at runtime / first run - not source
+backend/ai/eta_model.joblib
+backend/ai/training_data.csv
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.vscode/

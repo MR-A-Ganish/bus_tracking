@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Driver Dashboard - Smart College Bus System</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="logo-dot">🚌</div>
+    <div>
+      <h1>Smart College Bus System</h1>
+      <small>Driver Dashboard</small>
+    </div>
+  </div>
+  <div class="user-info">
+    <span class="avatar" id="driver-avatar">?</span>
+    <span id="driver-name">Loading...</span>
+    <button id="logout-btn">Logout</button>
+  </div>
+</div>
+
+<div class="container">
+
+  <div class="grid cols-3" style="margin-bottom:18px;">
+    <div class="card stat-card">
+      <div>
+        <h2>My Bus</h2>
+        <div class="metric" id="driver-bus-name">-</div>
+        <small class="small-muted" id="driver-bus-route">-</small>
+      </div>
+      <div class="stat-icon">🚌</div>
+    </div>
+    <div class="card stat-card">
+      <div>
+        <h2>GPS Status</h2>
+        <div><span class="badge not_started" id="gps-status-badge">not sharing</span></div>
+        <small class="small-muted" id="gps-accuracy-label" style="display:block;margin-top:8px;">Accuracy: --</small>
+      </div>
+      <div class="stat-icon">📡</div>
+    </div>
+    <div class="card stat-card">
+      <div>
+        <h2>Last Ping</h2>
+        <div class="metric" id="last-ping-value" style="font-size:20px;">--</div>
+        <small class="small-muted" id="ping-count-label">0 updates sent</small>
+      </div>
+      <div class="stat-icon">⏱️</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:18px;">
+    <h2>Trip Control</h2>
+    <p class="small-muted" id="trip-help-text">
+      Press Start Trip to switch this bus to real live tracking. Your browser will ask for
+      location permission - allow it, and keep this page open while you drive.
+    </p>
+    <div class="alert" id="driver-alert"></div>
+    <div class="form-actions">
+      <button class="btn" id="start-trip-btn">▶️ Start Trip (share live GPS)</button>
+      <button class="btn danger" id="end-trip-btn" style="display:none;">⏹️ End Trip</button>
+    </div>
+  </div>
+
+  <div class="card map-card">
+    <div class="map-card-head"><h2>My Live Position</h2></div>
+    <div id="driver-map"></div>
+    <div class="map-legend">
+      <span><i style="background:var(--primary);"></i> You (this bus)</span>
+    </div>
+  </div>
+
+</div>
+
+<script src="js/driver.js"></script>
+</body>
+</html>

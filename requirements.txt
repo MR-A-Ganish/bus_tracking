@@ -1,0 +1,11 @@
+Flask==3.0.3
+Flask-Cors==4.0.1
+mysql-connector-python==8.4.0
+scikit-learn==1.5.1
+pandas==2.2.2
+numpy==1.26.4
+joblib==1.4.2
+qrcode==7.4.2
+Pillow==10.4.0
+python-dotenv==1.0.1
+pyopenssl==26.4.0

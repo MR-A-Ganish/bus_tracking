@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Student Dashboard - Smart College Bus System</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="logo-dot">🚌</div>
+    <div>
+      <h1>Smart College Bus System</h1>
+      <small>Student Dashboard</small>
+    </div>
+  </div>
+  <div class="user-info">
+    <span class="avatar" id="student-avatar">?</span>
+    <span id="student-name">Loading...</span>
+    <button id="logout-btn">Logout</button>
+  </div>
+</div>
+
+<div class="container">
+
+  <div class="greeting-banner" id="greeting-banner">
+    <div class="greeting-text">
+      <h2 id="greeting-title">Hello!</h2>
+      <p id="greeting-sub">Loading your journey...</p>
+    </div>
+    <div class="mini-mascot" id="mini-mascot">
+      <span class="zzz">z</span>
+      <span class="zzz z2">Z</span>
+      <div class="mascot-wrap">
+        <svg viewBox="0 0 200 210" width="84" height="88" aria-hidden="true">
+          <ellipse cx="100" cy="200" rx="50" ry="7" fill="rgba(0,0,0,0.12)"/>
+          <path d="M52,210 Q52,148 100,148 Q148,148 148,210 Z" fill="#3730a3"/>
+          <path d="M92,148 L100,164 L108,148 Z" fill="#0ea5e9"/>
+          <circle cx="50" cy="99" r="8" fill="#ffd8b4"/>
+          <circle cx="150" cy="99" r="8" fill="#ffd8b4"/>
+          <circle cx="100" cy="95" r="50" fill="#ffd8b4"/>
+          <path d="M70,82 Q80,76 90,82" stroke="#8a5a2e" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+          <path d="M110,82 Q120,76 130,82" stroke="#8a5a2e" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+          <g id="mascot-eyes">
+            <ellipse cx="80" cy="100" rx="10" ry="12" fill="#fff"/>
+            <ellipse cx="120" cy="100" rx="10" ry="12" fill="#fff"/>
+            <circle id="pupil-l" cx="80" cy="100" r="5" fill="#14162b"/>
+            <circle id="pupil-r" cx="120" cy="100" r="5" fill="#14162b"/>
+          </g>
+          <path d="M96,106 Q100,114 104,106" stroke="#e0a879" stroke-width="2" fill="none" stroke-linecap="round"/>
+          <path id="mascot-mouth" d="M82,128 Q100,140 118,128" stroke="#a33b4e" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+          <path d="M46,78 Q100,18 154,78 L154,64 Q100,8 46,64 Z" fill="#3730a3"/>
+          <ellipse cx="100" cy="78" rx="58" ry="10" fill="#312e81"/>
+          <circle cx="100" cy="60" r="7" fill="#0ea5e9"/>
+          <g id="mascot-hand-l" class="mascot-hand">
+            <ellipse cx="52" cy="176" rx="10" ry="8" fill="#3730a3"/>
+            <rect x="37" y="145" width="28" height="34" rx="14" fill="#ffffff" stroke="#c7cbdb" stroke-width="2"/>
+            <circle cx="63" cy="158" r="6" fill="#ffffff" stroke="#c7cbdb" stroke-width="2"/>
+          </g>
+          <g id="mascot-hand-r" class="mascot-hand">
+            <ellipse cx="148" cy="176" rx="10" ry="8" fill="#3730a3"/>
+            <rect x="135" y="145" width="28" height="34" rx="14" fill="#ffffff" stroke="#c7cbdb" stroke-width="2"/>
+            <circle cx="137" cy="158" r="6" fill="#ffffff" stroke="#c7cbdb" stroke-width="2"/>
+          </g>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid cols-3" style="margin-bottom:18px;">
+    <div class="card stat-card">
+      <div>
+        <h2>Assigned Bus</h2>
+        <div class="metric" id="assigned-bus">-</div>
+        <small class="small-muted" id="assigned-stop">-</small>
+      </div>
+      <div class="stat-icon">🚌</div>
+    </div>
+
+    <div class="card ring-card">
+      <h2>ETA to My Stop</h2>
+      <div class="ring-wrap">
+        <svg viewBox="0 0 100 100" class="progress-ring">
+          <circle cx="50" cy="50" r="42" class="ring-bg"/>
+          <circle cx="50" cy="50" r="42" class="ring-fg" id="eta-ring"/>
+        </svg>
+        <div class="ring-center">
+          <div class="ring-value" id="eta-value">--</div>
+          <div class="ring-sub">minutes</div>
+        </div>
+      </div>
+      <small class="small-muted" id="eta-label">Waiting for bus data...</small>
+    </div>
+
+    <div class="card ring-card">
+      <h2>Bus Capacity</h2>
+      <div class="ring-wrap">
+        <svg viewBox="0 0 100 100" class="progress-ring">
+          <circle cx="50" cy="50" r="42" class="ring-bg"/>
+          <circle cx="50" cy="50" r="42" class="ring-fg" id="capacity-ring"/>
+        </svg>
+        <div class="ring-center">
+          <div class="ring-value" id="capacity-value">--/--</div>
+          <div class="ring-sub">seats</div>
+        </div>
+      </div>
+      <small class="small-muted" id="capacity-label">Waiting for bus data...</small>
+    </div>
+
+    <div class="card stat-card">
+      <div>
+        <h2>Distance / Stops Remaining</h2>
+        <div class="metric" id="distance-value">-- km</div>
+        <small class="small-muted" id="stops-remaining-label">-- stops remaining</small>
+      </div>
+      <div class="stat-icon">📍</div>
+    </div>
+    <div class="card stat-card">
+      <div>
+        <h2>Bus Status</h2>
+        <div><span class="badge not_started" id="bus-status-badge">not started</span> <span class="badge not_started" id="tracking-mode-badge" style="display:none;">Simulated</span></div>
+        <small class="small-muted" id="traffic-label" style="display:block;margin-top:8px;">Traffic: --</small>
+      </div>
+      <div class="stat-icon">📡</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:18px;">
+    <h2>Journey Timeline</h2>
+    <ul class="timeline" id="journey-timeline"></ul>
+  </div>
+
+  <div class="card map-card" style="margin-bottom:18px;">
+    <div class="map-card-head">
+      <h2>Live Bus Tracking</h2>
+    </div>
+    <div id="live-map"></div>
+    <div class="map-legend">
+      <span><i style="background:var(--primary);"></i> Your bus</span>
+      <span><i style="background:#fff;border:2px solid var(--text-muted);"></i> Upcoming stop</span>
+      <span><i style="background:#fff;border:2px solid var(--success);"></i> Passed stop</span>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card" id="qr-card" style="position:relative;">
+      <div class="confetti-layer" id="confetti-layer"></div>
+      <h2>QR Attendance / Boarding</h2>
+      <p class="small-muted">Scan the bus QR code when you board at your stop.</p>
+      <button class="btn" id="start-scan-btn">📷 Scan QR with Camera</button>
+      <div id="qr-reader" style="margin-top:12px;"></div>
+
+      <div class="qr-fallback">
+        <input type="text" id="qr-manual-input" placeholder="Or type QR code text (demo fallback)">
+        <button class="btn secondary" id="qr-manual-submit">Submit</button>
+      </div>
+
+      <div id="boarding-status" class="boarding-status" style="display:none;"></div>
+
+      <div style="margin-top:14px;">
+        <span class="small-muted">Passenger status: </span>
+        <span id="passenger-status">-- / --</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Notifications</h2>
+      <ul class="notif-list" id="notif-list"><li class="small-muted">No notifications yet.</li></ul>
+    </div>
+  </div>
+
+</div>
+
+<script src="js/student.js"></script>
+</body>
+</html>
