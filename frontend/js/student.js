@@ -271,7 +271,7 @@ async function refreshLocationAndEta() {
     const trackingBadge = document.getElementById("tracking-mode-badge");
     trackingBadge.style.display = "inline-block";
     trackingBadge.textContent = loc.is_live ? "📡 LIVE GPS" : "Simulated";
-    trackingBadge.className = `badge ${loc.is_live ? "low" : "not_started"}`;
+    trackingBadge.className = `badge ${loc.is_live ? "low live-pulse" : "not_started"}`;
 
     const trafficLabel = document.getElementById("traffic-label");
     trafficLabel.innerHTML = `Traffic: <span class="badge ${loc.traffic_condition}">${loc.traffic_condition}</span>`;
@@ -383,7 +383,7 @@ document.getElementById("start-scan-btn").addEventListener("click", async () => 
 
 document.getElementById("logout-btn").addEventListener("click", async () => {
   await api("/api/logout", { method: "POST" });
-  window.location.href = "index.html";
+  navigateTo("index.html");
 });
 
 (async function init() {

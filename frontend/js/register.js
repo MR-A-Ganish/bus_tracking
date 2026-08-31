@@ -72,7 +72,7 @@ document.getElementById("register-form").addEventListener("submit", async (e) =>
     }
 
     mascot.happy();
-    setTimeout(() => { window.location.href = "student.html"; }, 500);
+    setTimeout(() => { navigateTo("student.html", 260); }, 500);
   } catch (err) {
     submitBtn.classList.remove("loading");
     mascot.sad();

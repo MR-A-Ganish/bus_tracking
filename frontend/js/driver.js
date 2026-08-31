@@ -139,7 +139,7 @@ document.getElementById("end-trip-btn").addEventListener("click", async () => {
 document.getElementById("logout-btn").addEventListener("click", async () => {
   if (watchId !== null) navigator.geolocation.clearWatch(watchId);
   await api("/api/logout", { method: "POST" });
-  window.location.href = "index.html";
+  navigateTo("index.html");
 });
 
 loadProfile();

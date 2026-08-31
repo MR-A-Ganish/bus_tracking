@@ -41,7 +41,7 @@ def eta_predict():
         current_seq = current_stop["sequence_order"] if current_stop else -1
         if current_seq >= target_stop["sequence_order"]:
             return jsonify({
-                "success": True, "eta_minutes": 0, "distance_km": 0, "is_live": True,
+                "success": True, "eta_minutes": 0, "distance_km": 0, "is_live": True, "stops_remaining": 0,
                 "message": "Bus has already reached or passed this stop",
             })
         distance_km = haversine_km(loc["gps_lat"], loc["gps_lng"], target_stop["latitude"], target_stop["longitude"])
@@ -51,7 +51,7 @@ def eta_predict():
         distance_km = target_stop["distance_from_start_km"] - loc["distance_covered_km"]
         if distance_km <= 0:
             return jsonify({
-                "success": True, "eta_minutes": 0, "distance_km": 0, "is_live": False,
+                "success": True, "eta_minutes": 0, "distance_km": 0, "is_live": False, "stops_remaining": 0,
                 "message": "Bus has already reached or passed this stop",
             })
         stops_between = [

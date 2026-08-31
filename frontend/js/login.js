@@ -40,7 +40,7 @@ document.getElementById("login-form").addEventListener("submit", async (e) => {
     mascot.happy();
     const destinations = { student: "student.html", driver: "driver.html", admin: "admin.html" };
     setTimeout(() => {
-      window.location.href = destinations[data.user.role] || "admin.html";
+      navigateTo(destinations[data.user.role] || "admin.html", 260);
     }, 500);
   } catch (err) {
     submitBtn.classList.remove("loading");

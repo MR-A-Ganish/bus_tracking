@@ -36,18 +36,58 @@ function showAlert(elId, success, message) {
 
 /* ---------------- Tabs ---------------- */
 
+function moveTabIndicator(btn) {
+  const indicator = document.getElementById("tab-indicator");
+  const tabsEl = document.getElementById("admin-tabs");
+  if (!indicator || !tabsEl || !btn) return;
+  const tabsRect = tabsEl.getBoundingClientRect();
+  const btnRect = btn.getBoundingClientRect();
+  indicator.style.width = `${btnRect.width}px`;
+  indicator.style.transform = `translate(${btnRect.left - tabsRect.left}px, ${btnRect.top - tabsRect.top}px)`;
+}
+
 document.querySelectorAll(".tab-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
     document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
     document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
     btn.classList.add("active");
     document.getElementById(`tab-${btn.dataset.tab}`).classList.add("active");
+    moveTabIndicator(btn);
     if (btn.dataset.tab === "map") {
       if (!fleetInitialized) initFleetMap();
       setTimeout(() => fleetMap && fleetMap.invalidateSize(), 50);
     }
   });
 });
+
+window.addEventListener("resize", () => {
+  const active = document.querySelector(".tab-btn.active");
+  if (active) moveTabIndicator(active);
+});
+
+/* ---------------- Count-up numbers ---------------- */
+
+function setCountMetric(id, value) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const hadPrev = el.dataset.val !== undefined;
+  const prev = hadPrev ? parseInt(el.dataset.val, 10) : 0;
+  if (hadPrev && prev === value) return;
+  el.dataset.val = value;
+
+  const duration = 450;
+  const start = performance.now();
+  function tick(now) {
+    const p = Math.min(1, (now - start) / duration);
+    const eased = 1 - Math.pow(1 - p, 3);
+    el.textContent = Math.round(prev + (value - prev) * eased);
+    if (p < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+  el.classList.remove("count-pop");
+  void el.offsetWidth;
+  el.classList.add("count-pop");
+}
 
 /* ---------------- Session / overview ---------------- */
 
@@ -67,20 +107,18 @@ async function refreshBuses() {
   const data = await api("/api/buses");
   const buses = data.buses || [];
 
-  document.getElementById("total-buses").textContent = buses.length;
+  setCountMetric("total-buses", buses.length);
   const active = buses.filter((b) => ["moving", "waiting", "arrived_at_stop"].includes(b.status)).length;
-  document.getElementById("active-buses").textContent = active;
-  document.getElementById("total-passengers").textContent =
-    buses.reduce((sum, b) => sum + (b.current_passengers || 0), 0);
-  document.getElementById("college-entries").textContent =
-    buses.filter((b) => b.college_entry_detected).length;
+  setCountMetric("active-buses", active);
+  setCountMetric("total-passengers", buses.reduce((sum, b) => sum + (b.current_passengers || 0), 0));
+  setCountMetric("college-entries", buses.filter((b) => b.college_entry_detected).length);
 
   const tbody = document.getElementById("buses-table-body");
   tbody.innerHTML = buses.map((b) => `
     <tr>
       <td>${escapeHtml(b.bus_name)}</td>
       <td>${b.is_live
-          ? '<span class="badge low">📡 LIVE GPS</span>'
+          ? '<span class="badge low live-pulse">📡 LIVE GPS</span>'
           : '<span class="badge not_started">Simulated</span>'}</td>
       <td><span class="badge ${b.status}">${(b.status || "").replace(/_/g, " ")}</span></td>
       <td>${escapeHtml(b.current_stop_name) || "-"}</td>
@@ -511,10 +549,13 @@ document.getElementById("student-bus").addEventListener("change", () => populate
 
 document.getElementById("logout-btn").addEventListener("click", async () => {
   await api("/api/logout", { method: "POST" });
-  window.location.href = "index.html";
+  navigateTo("index.html");
 });
 
 (async function init() {
+  const activeTab = document.querySelector(".tab-btn.active");
+  if (activeTab) requestAnimationFrame(() => moveTabIndicator(activeTab));
+
   await loadSession();
   await loadLookup();
   refreshBuses();
