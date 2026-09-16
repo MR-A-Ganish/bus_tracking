@@ -1,27 +1,32 @@
 -- ============================================================
 -- Smart College Bus Tracking and Transportation Management System
--- MySQL Schema + Sample Data
+-- PostgreSQL Schema + Sample Data
 -- ============================================================
+-- Run this against an already-created database (Render's managed
+-- Postgres provisions one for you; for local dev, `createdb smart_bus_system`
+-- first). Safe to re-run - it drops and recreates all tables each time.
 
-DROP DATABASE IF EXISTS smart_bus_system;
-CREATE DATABASE smart_bus_system;
-USE smart_bus_system;
+DROP TABLE IF EXISTS
+    eta_predictions, notifications, attendance, bus_locations,
+    student_bus_assignments, drivers, admins, students, buses,
+    bus_stops, routes, users
+    CASCADE;
 
 -- ------------------------------------------------------------
 -- 1. USERS (login table for students, admins, and drivers)
 -- ------------------------------------------------------------
 CREATE TABLE users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL,
     password VARCHAR(255) NOT NULL,   -- stored as a salted hash
-    role ENUM('student', 'admin', 'driver') NOT NULL
+    role VARCHAR(20) NOT NULL CHECK (role IN ('student', 'admin', 'driver'))
 );
 
 -- ------------------------------------------------------------
 -- 2. ROUTES
 -- ------------------------------------------------------------
 CREATE TABLE routes (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
     route_name VARCHAR(100) NOT NULL,
     start_point VARCHAR(100) NOT NULL,
     end_point VARCHAR(100) NOT NULL
@@ -31,7 +36,7 @@ CREATE TABLE routes (
 -- 3. BUS STOPS (ordered stops along a route)
 -- ------------------------------------------------------------
 CREATE TABLE bus_stops (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
     route_id INT NOT NULL,
     stop_name VARCHAR(100) NOT NULL,
     sequence_order INT NOT NULL,              -- 0 = start, increasing towards college
@@ -45,7 +50,7 @@ CREATE TABLE bus_stops (
 -- 4. BUSES
 -- ------------------------------------------------------------
 CREATE TABLE buses (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
     bus_name VARCHAR(50) NOT NULL,
     driver_name VARCHAR(100) DEFAULT NULL,
     capacity INT NOT NULL DEFAULT 50,
@@ -58,7 +63,7 @@ CREATE TABLE buses (
 -- 5. STUDENTS
 -- ------------------------------------------------------------
 CREATE TABLE students (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
     user_id INT NOT NULL,
     name VARCHAR(100) NOT NULL,
     register_no VARCHAR(50) DEFAULT NULL,
@@ -70,7 +75,7 @@ CREATE TABLE students (
 -- 6. ADMINS
 -- ------------------------------------------------------------
 CREATE TABLE admins (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
     user_id INT NOT NULL,
     name VARCHAR(100) NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id)
@@ -80,7 +85,7 @@ CREATE TABLE admins (
 -- 6b. DRIVERS (one real GPS-sharing account per bus)
 -- ------------------------------------------------------------
 CREATE TABLE drivers (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
     user_id INT NOT NULL,
     name VARCHAR(100) NOT NULL,
     phone VARCHAR(20) DEFAULT NULL,
@@ -94,7 +99,7 @@ CREATE TABLE drivers (
 -- 7. STUDENT <-> BUS/STOP ASSIGNMENT
 -- ------------------------------------------------------------
 CREATE TABLE student_bus_assignments (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
     student_id INT NOT NULL,
     bus_id INT NOT NULL,
     stop_id INT NOT NULL,
@@ -111,55 +116,72 @@ CREATE TABLE student_bus_assignments (
 --    is_gps_live() and routes/buses.py.)
 -- ------------------------------------------------------------
 CREATE TABLE bus_locations (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
     bus_id INT NOT NULL UNIQUE,
     distance_covered_km FLOAT NOT NULL DEFAULT 0,
     current_stop_id INT DEFAULT NULL,
     next_stop_id INT DEFAULT NULL,
-    status ENUM('not_started','moving','arrived_at_stop','waiting','reached_college') NOT NULL DEFAULT 'not_started',
-    traffic_condition ENUM('low','medium','high') NOT NULL DEFAULT 'low',
+    status VARCHAR(20) NOT NULL DEFAULT 'not_started'
+        CHECK (status IN ('not_started','moving','arrived_at_stop','waiting','reached_college')),
+    traffic_condition VARCHAR(10) NOT NULL DEFAULT 'low'
+        CHECK (traffic_condition IN ('low','medium','high')),
     speed_kmph FLOAT NOT NULL DEFAULT 30,
-    college_entry_detected TINYINT(1) NOT NULL DEFAULT 0,
-    college_entry_time DATETIME DEFAULT NULL,
+    college_entry_detected SMALLINT NOT NULL DEFAULT 0,
+    college_entry_time TIMESTAMP DEFAULT NULL,
     gps_lat FLOAT DEFAULT NULL,           -- real GPS latitude from the driver's device
     gps_lng FLOAT DEFAULT NULL,           -- real GPS longitude from the driver's device
     gps_accuracy_m FLOAT DEFAULT NULL,    -- accuracy radius (metres) reported by the Geolocation API
     gps_speed_kmph FLOAT DEFAULT NULL,    -- real speed reported by the Geolocation API, if available
-    gps_updated_at DATETIME DEFAULT NULL, -- last time a real GPS ping was received for this bus
-    last_updated DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    gps_updated_at TIMESTAMP DEFAULT NULL, -- last time a real GPS ping was received for this bus
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (bus_id) REFERENCES buses(id),
     FOREIGN KEY (current_stop_id) REFERENCES bus_stops(id),
     FOREIGN KEY (next_stop_id) REFERENCES bus_stops(id)
 );
 
+-- Postgres has no "ON UPDATE CURRENT_TIMESTAMP" column clause (MySQL-only) -
+-- a trigger is the standard equivalent.
+CREATE OR REPLACE FUNCTION set_last_updated()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.last_updated = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER bus_locations_set_last_updated
+BEFORE UPDATE ON bus_locations
+FOR EACH ROW
+EXECUTE FUNCTION set_last_updated();
+
 -- ------------------------------------------------------------
 -- 9. ATTENDANCE (QR boarding records)
 -- ------------------------------------------------------------
 CREATE TABLE attendance (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
     student_id INT NOT NULL,
     bus_id INT NOT NULL,
     stop_id INT NOT NULL,
     attendance_date DATE NOT NULL,
     attendance_time TIME NOT NULL,
-    boarding_status ENUM('boarded') NOT NULL DEFAULT 'boarded',
+    boarding_status VARCHAR(20) NOT NULL DEFAULT 'boarded' CHECK (boarding_status IN ('boarded')),
     FOREIGN KEY (student_id) REFERENCES students(id),
     FOREIGN KEY (bus_id) REFERENCES buses(id),
     FOREIGN KEY (stop_id) REFERENCES bus_stops(id),
-    UNIQUE KEY unique_daily_boarding (student_id, bus_id, attendance_date)
+    CONSTRAINT unique_daily_boarding UNIQUE (student_id, bus_id, attendance_date)
 );
 
 -- ------------------------------------------------------------
 -- 10. NOTIFICATIONS
 -- ------------------------------------------------------------
 CREATE TABLE notifications (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    target_role ENUM('student','admin','all') NOT NULL DEFAULT 'all',
+    id SERIAL PRIMARY KEY,
+    target_role VARCHAR(10) NOT NULL DEFAULT 'all' CHECK (target_role IN ('student','admin','all')),
     bus_id INT DEFAULT NULL,
     student_id INT DEFAULT NULL,
     message VARCHAR(255) NOT NULL,
     event_type VARCHAR(50) NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (bus_id) REFERENCES buses(id)
 );
 
@@ -167,13 +189,13 @@ CREATE TABLE notifications (
 -- 11. ETA PREDICTIONS (log of what the ML model predicted)
 -- ------------------------------------------------------------
 CREATE TABLE eta_predictions (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
     bus_id INT NOT NULL,
     stop_id INT NOT NULL,
     predicted_eta_minutes FLOAT NOT NULL,
     distance_km FLOAT NOT NULL,
     traffic_condition VARCHAR(20) NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (bus_id) REFERENCES buses(id),
     FOREIGN KEY (stop_id) REFERENCES bus_stops(id)
 );
@@ -206,10 +228,11 @@ VALUES
 
 -- Demo users
 -- Passwords below are placeholders; the backend re-hashes and stores real
--- hashes for 'student01'/'1234' and 'admin01'/'admin123' on first run via seed_demo_users.py
+-- hashes for 'student01'/'1234' and 'admin01'/'admin123' on first run via seed.py
 -- (kept here only as documentation of the demo credentials)
 -- username: student01 / password: 1234   (role = student)
 -- username: student02 / password: 1234   (role = student)
 -- username: admin01   / password: admin123 (role = admin)
+-- username: driver01  / password: drive123 (role = driver)
 
 -- Sample student->bus->stop assignment (created after seeding users, see backend/seed.py)

@@ -4,7 +4,7 @@ Central configuration for the Smart College Bus System backend.
 All secrets (DB password, session secret key) are read from environment
 variables - never hardcoded here, since this file is committed to git.
 For local development, copy backend/.env.example to backend/.env and fill
-in your real MySQL password there; .env is gitignored and loaded
+in your real Postgres password there; .env is gitignored and loaded
 automatically via python-dotenv below.
 """
 
@@ -13,19 +13,25 @@ from dotenv import load_dotenv
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
-DB_CONFIG = {
-    "host": os.environ.get("DB_HOST", "localhost"),
-    "port": int(os.environ.get("DB_PORT", "3306")),
-    "user": os.environ.get("DB_USER", "root"),
-    "password": os.environ.get("DB_PASSWORD", ""),
-    "database": os.environ.get("DB_NAME", "smart_bus_system"),
-}
+# Render (and most managed Postgres hosts) provide one connection string via
+# DATABASE_URL - if it's set, use it directly and ignore the discrete DB_*
+# vars below (those are for local dev / hosts that don't provide a DSN).
+_DATABASE_URL = os.environ.get("DATABASE_URL")
 
-# Managed MySQL hosts (Aiven, PlanetScale, etc.) require TLS. Set DB_USE_SSL=true
-# in that environment's variables; local MySQL needs nothing extra here.
-if os.environ.get("DB_USE_SSL", "false").lower() == "true":
-    DB_CONFIG["ssl_disabled"] = False
-    DB_CONFIG["ssl_verify_cert"] = False
+if _DATABASE_URL:
+    DB_CONFIG = {"dsn": _DATABASE_URL}
+else:
+    DB_CONFIG = {
+        "host": os.environ.get("DB_HOST", "localhost"),
+        "port": int(os.environ.get("DB_PORT", "5432")),
+        "user": os.environ.get("DB_USER", "postgres"),
+        "password": os.environ.get("DB_PASSWORD", ""),
+        "dbname": os.environ.get("DB_NAME", "smart_bus_system"),
+        # "prefer" encrypts when the server supports it and falls back to an
+        # unencrypted connection otherwise - safe default for both local dev
+        # and a managed host. Override with DB_SSLMODE=require/disable if needed.
+        "sslmode": os.environ.get("DB_SSLMODE", "prefer"),
+    }
 
 # Secret key used to sign session cookies. Set a real random value via the
 # SECRET_KEY env var in any shared/deployed environment.

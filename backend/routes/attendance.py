@@ -118,15 +118,15 @@ def list_attendance():
                JOIN students s ON s.id = a.student_id
                JOIN bus_stops bs ON bs.id = a.stop_id
                JOIN buses b ON b.id = a.bus_id
-               WHERE a.attendance_date = CURDATE()"""
+               WHERE a.attendance_date = CURRENT_DATE"""
     params = ()
     if bus_id:
         query += " AND a.bus_id=%s"
         params = (bus_id,)
     query += " ORDER BY a.attendance_time DESC"
     rows = run_query(query, params, fetch=True)
-    # mysql-connector returns TIME columns as timedelta, which isn't JSON
-    # serializable - convert to a plain "HH:MM:SS" string for the API.
+    # DATE/TIME columns come back as date/time objects, which aren't JSON
+    # serializable - convert to plain strings for the API.
     for r in rows:
         if r.get("attendance_time") is not None:
             r["attendance_time"] = str(r["attendance_time"])

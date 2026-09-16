@@ -1,6 +1,6 @@
 # Smart College Bus Tracking and Transportation Management System
 
-A complete, working final-year project: Flask + MySQL backend, a real
+A complete, working final-year project: Flask + PostgreSQL backend, a real
 Machine-Learning ETA prediction model, simulated GPS bus tracking, QR-code
 attendance, college-entry geofence detection, route optimization, and
 separate Student / Management dashboards.
@@ -17,16 +17,16 @@ rewriting the architecture.
 
 | Feature | How it works |
 |---|---|
-| Login + roles | MySQL `users` table, hashed passwords, Flask sessions — every student and admin has their own real account, not just a fixed demo pair |
+| Login + roles | PostgreSQL `users` table, hashed passwords, Flask sessions — every student and admin has their own real account, not just a fixed demo pair |
 | Admin management panel | Admin dashboard has full CRUD (add/edit/delete) for students, buses, and other admin accounts, with bus↔stop assignment — `backend/routes/admin.py` |
 | Live tracking map | Interactive Leaflet/OpenStreetMap view showing each bus's marker moving in real time along the actual route, computed by interpolating its simulated GPS progress between stops (`backend/routes/buses.py`) |
-| Bus tracking | Background Python thread updates `bus_locations` in MySQL every 2s; frontend polls the API |
+| Bus tracking | Background Python thread updates `bus_locations` in PostgreSQL every 2s; frontend polls the API |
 | AI ETA prediction | Real `scikit-learn` RandomForestRegressor trained on generated data (`backend/ai/eta_model.py`), served via `/api/eta/predict` |
 | QR attendance | Real QR codes generated server-side (`qrcode` library) and scanned in-browser via device camera (`html5-qrcode`), with a manual-entry fallback |
 | College-entry detection | Simulated geofence check (`backend/services/geofence.py`) comparing simulated distance to the college stop's distance |
 | Route optimization | Dijkstra's shortest-path algorithm over alternate road segments (`backend/services/route_optimizer.py`) |
-| Database | Real MySQL, 11 tables, Flask talks to it directly via `mysql-connector-python` (no in-memory-only data) |
-| Notifications | Rows written to a MySQL `notifications` table by real system events (bus started, approaching stop, boarding, delay, college entry, capacity warning) |
+| Database | Real PostgreSQL, 12 tables, Flask talks to it directly via `psycopg2` (no in-memory-only data) |
+| Notifications | Rows written to a PostgreSQL `notifications` table by real system events (bus started, approaching stop, boarding, delay, college entry, capacity warning) |
 
 The frontend (`frontend/`) is a redesigned, responsive dashboard (Inter font,
 card-based layout, live badges/animations) rather than a bare prototype UI.
@@ -40,8 +40,8 @@ The live map uses OpenStreetMap tiles over the internet (no API key needed)
 Install these once:
 
 1. **Python 3.10+** — https://www.python.org/downloads/ (tick "Add Python to PATH" during install)
-2. **MySQL Server** — easiest is MySQL Installer: https://dev.mysql.com/downloads/installer/
-   During setup, set a root password and remember it (or leave it blank for a local dev setup).
+2. **PostgreSQL Server** — https://www.postgresql.org/download/
+   During setup, set a password for the `postgres` user and remember it.
 3. **VS Code** — https://code.visualstudio.com/
 4. **Git** (optional, only if you want version control) — https://git-scm.com/
 
@@ -54,7 +54,7 @@ SmartCollegeBusSystem/
 ├── backend/
 │   ├── app.py                  # Flask entry point - run this
 │   ├── config.py               # DB credentials & simulation settings - EDIT THIS
-│   ├── database.py             # MySQL connection helper
+│   ├── database.py             # PostgreSQL connection helper
 │   ├── seed.py                 # Creates demo login accounts - run once after schema
 │   ├── routes/                 # API endpoints (auth, buses, eta, attendance, admin...)
 │   ├── services/                # bus_simulation.py, geofence.py, route_optimizer.py, notification_service.py
@@ -68,7 +68,7 @@ SmartCollegeBusSystem/
 │   ├── css/style.css
 │   └── js/ (login.js, student.js, admin.js)
 ├── database/
-│   └── schema.sql              # Run this in MySQL first
+│   └── schema.sql              # Run this in PostgreSQL first
 ├── requirements.txt
 └── README.md                   # (this file)
 ```
@@ -94,37 +94,39 @@ the virtual environment is active.
 
 ### Step 2 — Create the database
 
-Open a terminal and run (you'll be prompted for your MySQL root password):
+Open a terminal and create an empty database first (schema.sql only creates
+tables inside it, it doesn't create the database itself):
 
 ```powershell
-mysql -u root -p < database\schema.sql
+createdb -U postgres smart_bus_system
 ```
 
-If `mysql` isn't recognized, add MySQL's `bin` folder to your PATH (typically
-`C:\Program Files\MySQL\MySQL Server 8.0\bin`), or use the full path:
+If `createdb` isn't recognized, add PostgreSQL's `bin` folder to your PATH
+(typically `C:\Program Files\PostgreSQL\<version>\bin`), or use the full path.
+Then load the schema:
 
 ```powershell
-"C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -u root -p < database\schema.sql
+psql -U postgres -d smart_bus_system -f database\schema.sql
 ```
 
-This creates the `smart_bus_system` database, all 11 tables, and sample
-buses/stops/routes.
+This creates all 12 tables and sample buses/stops/routes.
 
 ### Step 3 — Configure your database password
 
-Open `backend/config.py` and set your MySQL root password:
+Copy `backend/.env.example` to `backend/.env` and set your PostgreSQL
+password:
 
-```python
-DB_CONFIG = {
-    "host": "localhost",
-    "user": "root",
-    "password": "YOUR_MYSQL_PASSWORD_HERE",
-    "database": "smart_bus_system",
-}
+```
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=YOUR_POSTGRES_PASSWORD_HERE
+DB_NAME=smart_bus_system
 ```
 
-(Alternatively, set environment variables `DB_USER` / `DB_PASSWORD` instead
-of editing the file.)
+(`.env` is gitignored and loaded automatically by `backend/config.py` via
+python-dotenv. Alternatively, set these as real environment variables instead
+of using a `.env` file.)
 
 ### Step 4 — Create the demo login accounts
 
@@ -255,15 +257,16 @@ claim of commercial-grade navigation.
 
 ## 10. Troubleshooting
 
-- **"Could not connect to MySQL"** — check `backend/config.py` matches your
-  MySQL username/password, and that the MySQL service is running
-  (`services.msc` on Windows → look for "MySQL80" or similar → Start).
+- **"Could not connect to PostgreSQL"** — check `backend/.env` (or your
+  environment variables) match your Postgres username/password/port, and
+  that the PostgreSQL service is running (`services.msc` on Windows → look
+  for "postgresql-x64-\<version\>" → Start).
 - **Port 5000 already in use** — close whatever else is using it, or change
   the port in the last lines of `backend/app.py`.
 - **Camera QR scanning doesn't work** — some browsers block camera access on
   `http://` (non-HTTPS) for anything other than `localhost`. Since this runs
   on `127.0.0.1`/`localhost`, it should work in Chrome/Edge; if not, use the
   manual QR-text fallback field on the student dashboard.
-- **`pip install` fails on `mysql-connector-python`** — make sure you're
-  using the virtual environment (`venv\Scripts\activate`) and a Python
-  version between 3.10 and 3.12.
+- **`pip install` fails on `psycopg2-binary`** — make sure you're using the
+  virtual environment (`venv\Scripts\activate`) and a Python version between
+  3.10 and 3.12.
