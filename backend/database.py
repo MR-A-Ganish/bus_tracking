@@ -1,5 +1,6 @@
 """Bounded PostgreSQL pooling and one transaction per HTTP request."""
 import atexit
+import os
 import threading
 from contextlib import contextmanager
 from flask import g, has_request_context
@@ -8,16 +9,18 @@ from psycopg_pool import ConnectionPool
 from config import DATABASE_URL
 
 _pool = None
+_pool_pid = None
 _pool_lock = threading.Lock()
 
 
 def _open_connection():
-    global _pool
+    global _pool, _pool_pid
     with _pool_lock:
-        if _pool is None:
+        if _pool is None or _pool_pid != os.getpid():
             _pool = ConnectionPool(DATABASE_URL, min_size=0, max_size=5, max_waiting=20,
                                    timeout=10, open=True,
                                    kwargs={"row_factory": dict_row, "connect_timeout": 10})
+            _pool_pid = os.getpid()
             atexit.register(_pool.close)
     return _pool.connection()
 

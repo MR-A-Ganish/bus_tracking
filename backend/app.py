@@ -136,8 +136,9 @@ def health():
         if not migration:
             return jsonify(success=False,message="Database migration pending"),503
         return jsonify(success=True,revision=os.environ.get("RENDER_GIT_COMMIT", "local"),tracking="gps")
-    except Exception:
-        return jsonify(success=False, message="Database unavailable"), 503
+    except Exception as error:
+        app.logger.exception("Database health check failed (%s)",type(error).__name__)
+        return jsonify(success=False, message="Database unavailable",revision=os.environ.get("RENDER_GIT_COMMIT","local")),503
 
 
 app.register_blueprint(auth_bp)

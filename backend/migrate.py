@@ -1,10 +1,14 @@
 """Apply tracked, transactional PostgreSQL migrations without resetting data."""
 from pathlib import Path
-from database import get_connection
+import psycopg
+from psycopg.rows import dict_row
+from config import DATABASE_URL
 
 
 def migrate():
-    with get_connection() as conn:
+    # Startup may import this module before Gunicorn forks worker processes.
+    # A short-lived connection keeps migration sockets and pool threads out of workers.
+    with psycopg.connect(DATABASE_URL,row_factory=dict_row,connect_timeout=10) as conn:
         conn.execute("SELECT pg_advisory_xact_lock(72419628)")
         conn.execute("CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP)")
         for path in sorted((Path(__file__).resolve().parent.parent / "database" / "migrations").glob("*.sql")):
