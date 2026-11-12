@@ -99,19 +99,29 @@ async function loadSession() {
 }
 
 async function startBus(busId) {
-  await api(`/api/buses/${busId}/start`, { method: "POST" });
+  const result = await api(`/api/buses/${busId}/start`, { method: "POST" });
+  if (!result.success) document.getElementById("connection-status").textContent = result.message;
   refreshBuses();
 }
 
 async function refreshBuses() {
-  const data = await api("/api/buses");
+  let data;
+  try {
+    data = await api("/api/buses");
+    if (!data.success) throw new Error(data.message);
+    document.getElementById("connection-status").textContent = `Updated ${new Date().toLocaleTimeString()}`;
+  } catch (error) {
+    document.getElementById("connection-status").textContent = "Connection lost. Showing last known locations.";
+    Object.values(fleetMarkers).forEach(marker => marker.setOpacity(0.5));
+    return;
+  }
   const buses = data.buses || [];
 
   setCountMetric("total-buses", buses.length);
-  const active = buses.filter((b) => ["moving", "waiting", "arrived_at_stop"].includes(b.status)).length;
+  const active = buses.filter((b) => b.is_live && b.active_trip_id).length;
   setCountMetric("active-buses", active);
   setCountMetric("total-passengers", buses.reduce((sum, b) => sum + (b.current_passengers || 0), 0));
-  setCountMetric("college-entries", buses.filter((b) => b.college_entry_detected).length);
+  setCountMetric("college-entries", buses.filter((b) => b.college_entry_today).length);
 
   const tbody = document.getElementById("buses-table-body");
   tbody.innerHTML = buses.map((b) => `
@@ -119,14 +129,14 @@ async function refreshBuses() {
       <td>${escapeHtml(b.bus_name)}</td>
       <td>${b.is_live
           ? '<span class="badge low live-pulse">📡 LIVE GPS</span>'
-          : '<span class="badge not_started">Simulated</span>'}</td>
+          : `<span class="badge not_started">${escapeHtml(b.tracking_label)}</span>`}</td>
       <td><span class="badge ${b.status}">${(b.status || "").replace(/_/g, " ")}</span></td>
       <td>${escapeHtml(b.current_stop_name) || "-"}</td>
       <td>${escapeHtml(b.next_stop_name) || "-"}</td>
       <td><span class="badge ${b.traffic_condition}">${b.traffic_condition || "-"}</span></td>
       <td>${b.current_passengers} / ${b.capacity}</td>
       <td>${b.college_entry_detected ? "Entered" : "Not yet"}</td>
-      <td>${b.status === "not_started"
+      <td>${b.active_trip_id ? `<button class="btn danger sm" onclick="endBusTrip(${b.id},${b.active_trip_id})">End trip</button>` : b.status === "not_started"
           ? `<button class="btn secondary sm" onclick="startBus(${b.id})">Start</button>`
           : "-"}</td>
     </tr>
@@ -206,6 +216,12 @@ function initFleetMap() {
 }
 
 function updateFleetMarkers(buses) {
+  Object.keys(fleetMarkers).forEach(id => {
+    if (!buses.some(bus => String(bus.id) === id && bus.lat != null && bus.lng != null)) {
+      fleetMarkers[id].remove();
+      delete fleetMarkers[id];
+    }
+  });
   buses.forEach((b) => {
     if (b.lat == null || b.lng == null) return;
     const popupHtml = `<strong>${escapeHtml(b.bus_name)}</strong> ${b.is_live ? "📡 live" : "(simulated)"}<br>${(b.status || "").replace(/_/g, " ")}<br>${b.current_passengers}/${b.capacity} on board`;
@@ -216,6 +232,7 @@ function updateFleetMarkers(buses) {
       fleetMarkers[b.id].setIcon(busDivIcon(b.status));
       fleetMarkers[b.id].setPopupContent(popupHtml);
     }
+    fleetMarkers[b.id].setOpacity(b.is_live ? 1 : 0.5);
   });
 }
 
@@ -224,6 +241,11 @@ function updateFleetMarkers(buses) {
 async function loadLookup() {
   const data = await api("/api/admin/lookup");
   lookup = { buses: data.buses || [], routes: data.routes || [], stops: data.stops || [] };
+  const stopSelector = document.getElementById("stop-coordinate-select");
+  const selectedStop = stopSelector.value;
+  stopSelector.innerHTML = lookup.stops.map(stop => `<option value="${stop.id}">Route ${stop.route_id} - ${escapeHtml(stop.stop_name)}</option>`).join("");
+  if (lookup.stops.some(stop => String(stop.id) === selectedStop)) stopSelector.value = selectedStop;
+  populateCoordinateForm();
 
   const routeSelect = document.getElementById("bus-route");
   routeSelect.innerHTML = lookup.routes.map((r) => `<option value="${r.id}">${escapeHtml(r.route_name)}</option>`).join("");
@@ -568,7 +590,50 @@ document.getElementById("logout-btn").addEventListener("click", async () => {
   refreshNotifications();
 
   setInterval(refreshBuses, 3000);
-  setInterval(refreshAttendance, 4000);
-  setInterval(refreshRouteOptimization, 8000);
-  setInterval(refreshNotifications, 5000);
+  setInterval(() => refreshAttendance().catch(() => {}), 4000);
+  setInterval(() => refreshRouteOptimization().catch(() => {}), 8000);
+  setInterval(() => refreshNotifications().catch(() => {}), 5000);
 })();
+
+
+function populateCoordinateForm() {
+  const stop = lookup.stops.find(item => item.id === Number(document.getElementById("stop-coordinate-select").value));
+  if (!stop) return;
+  document.getElementById("stop-coordinate-name").value = stop.stop_name;
+  document.getElementById("stop-coordinate-latitude").value = stop.latitude ?? "";
+  document.getElementById("stop-coordinate-longitude").value = stop.longitude ?? "";
+}
+document.getElementById("stop-coordinate-select").addEventListener("change",populateCoordinateForm);
+document.getElementById("stop-coordinate-form").addEventListener("submit",async event => {
+  event.preventDefault();
+  const button = document.getElementById("save-stop-coordinates");
+  button.disabled = true;
+  try {
+    const id = Number(document.getElementById("stop-coordinate-select").value);
+    const result = await api(`/api/admin/stops/${id}`, {
+      method:"PUT",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({ stop_name:document.getElementById("stop-coordinate-name").value.trim(),
+        latitude:Number(document.getElementById("stop-coordinate-latitude").value),
+        longitude:Number(document.getElementById("stop-coordinate-longitude").value) })
+    });
+    if (!result.success) throw new Error(result.message);
+    await loadLookup();
+    if (fleetMap) fleetMap.remove();
+    fleetMap = null;
+    fleetMarkers = {};
+    fleetInitialized = false;
+    showAlert("stop-alert",true,"Stop coordinates saved.");
+  } catch (error) { showAlert("stop-alert",false,error.message); }
+  finally { button.disabled = false; }
+});
+
+
+async function endBusTrip(busId,tripId) {
+  try {
+    const result = await api(`/api/admin/buses/${busId}/end-trip`,{
+      method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({trip_id:tripId})
+    });
+    if (!result.success) throw new Error(result.message);
+    await refreshBuses();
+  } catch(error) { document.getElementById("connection-status").textContent=error.message; }
+}

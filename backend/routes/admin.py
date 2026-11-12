@@ -212,6 +212,10 @@ def delete_bus(bus_id):
     if not run_query("SELECT id FROM buses WHERE id=%s", (bus_id,), fetch_one=True):
         return jsonify({"success": False, "message": "Bus not found"}), 404
 
+    if run_query("SELECT id FROM drivers WHERE bus_id=%s",(bus_id,),fetch_one=True):
+        return jsonify(success=False,message="Unassign the driver before deleting this bus"),409
+    if run_query("SELECT id FROM bus_trips WHERE bus_id=%s LIMIT 1",(bus_id,),fetch_one=True):
+        return jsonify(success=False,message="This bus has trip history and must be retained"),409
     run_query("DELETE FROM attendance WHERE bus_id=%s", (bus_id,), commit=True)
     run_query("DELETE FROM eta_predictions WHERE bus_id=%s", (bus_id,), commit=True)
     run_query("DELETE FROM notifications WHERE bus_id=%s", (bus_id,), commit=True)
@@ -323,6 +327,8 @@ def update_driver(driver_id):
     if not driver:
         return jsonify({"success": False, "message": "Driver not found"}), 404
 
+    if run_query("SELECT id FROM bus_trips WHERE driver_id=%s AND ended_at IS NULL",(driver_id,),fetch_one=True):
+        return jsonify(success=False,message="End the driver's active trip before editing their assignment"),409
     run_query(
         """UPDATE drivers SET name=COALESCE(%s,name), phone=COALESCE(%s,phone),
            license_no=COALESCE(%s,license_no), bus_id=%s WHERE id=%s""",
@@ -348,6 +354,46 @@ def delete_driver(driver_id):
     if not driver:
         return jsonify({"success": False, "message": "Driver not found"}), 404
 
+    if run_query("SELECT id FROM gps_history WHERE driver_id=%s LIMIT 1",(driver_id,),fetch_one=True):
+        return jsonify(success=False,message="This driver has GPS history and must be retained"),409
     run_query("DELETE FROM drivers WHERE id=%s", (driver_id,), commit=True)
     run_query("DELETE FROM users WHERE id=%s", (driver["user_id"],), commit=True)
     return jsonify({"success": True})
+
+
+@admin_bp.route("/api/admin/stops/<int:stop_id>", methods=["PUT"])
+@login_required("admin")
+def update_stop_coordinates(stop_id):
+    import math
+    data = request.get_json()
+    name = data.get("stop_name")
+    latitude = data.get("latitude")
+    longitude = data.get("longitude")
+    if not isinstance(name,str) or not name.strip() or len(name)>100:
+        return jsonify(success=False,message="A stop name of at most 100 characters is required"),400
+    for value,limit in [(latitude,90),(longitude,180)]:
+        if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or not -limit <= value <= limit:
+            return jsonify(success=False,message="Enter valid latitude and longitude"),400
+    stop = run_query("SELECT id FROM bus_stops WHERE id=%s",(stop_id,),fetch_one=True)
+    if not stop:
+        return jsonify(success=False,message="Stop not found"),404
+    run_query("UPDATE bus_stops SET stop_name=%s,latitude=%s,longitude=%s WHERE id=%s",
+              (name.strip(),latitude,longitude,stop_id),commit=True)
+    return jsonify(success=True)
+
+
+@admin_bp.route("/api/admin/buses/<int:bus_id>/end-trip",methods=["POST"])
+@login_required("admin")
+def end_bus_trip(bus_id):
+    bus = run_query("SELECT id FROM buses WHERE id=%s FOR UPDATE",(bus_id,),fetch_one=True)
+    location = run_query("SELECT active_trip_id FROM bus_locations WHERE bus_id=%s FOR UPDATE",(bus_id,),fetch_one=True)
+    if not bus or not location or not location["active_trip_id"]:
+        return jsonify(success=False,message="This bus has no active trip"),409
+    trip_id = (request.get_json(silent=True) or {}).get("trip_id")
+    if type(trip_id) is not int or trip_id != location["active_trip_id"]:
+        return jsonify(success=False,message="The active trip changed. Refresh the fleet table."),409
+    run_query("UPDATE bus_trips SET ended_at=CURRENT_TIMESTAMP WHERE id=%s AND ended_at IS NULL",(trip_id,),commit=True)
+    run_query("UPDATE bus_locations SET sharing_active=FALSE,active_trip_id=NULL WHERE bus_id=%s",(bus_id,),commit=True)
+    run_query("UPDATE buses SET current_passengers=0 WHERE id=%s",(bus_id,),commit=True)
+    run_query("INSERT INTO notifications(target_role,bus_id,message,event_type) VALUES ('all',%s,'Management ended the trip.','trip_ended')",(bus_id,),commit=True)
+    return jsonify(success=True)

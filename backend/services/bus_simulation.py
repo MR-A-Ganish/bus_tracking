@@ -19,16 +19,16 @@ import random
 from datetime import datetime
 
 from database import run_query
-from services.geofence import has_entered_college, is_gps_live
+from services.geofence import has_entered_college
 from services.notification_service import create_notification
-from config import SIMULATION_TICK_SECONDS, STOP_WAIT_TICKS, COLLEGE_STOP_NAME
+from config import SIMULATION_TICK_SECONDS, STOP_WAIT_TICKS, COLLEGE_STOP_NAME, SIMULATION_ENABLED
 
 # Ephemeral, per-bus simulation flags that don't need to live in the DB
 # (works for the single-process `flask run` dev server used in this project).
 _sim_state = {}  # bus_id -> {"wait_ticks_remaining": int, "approach_notified": bool}
 
 _lock = threading.Lock()
-_started_buses = set()
+_simulation_thread = None
 
 
 def _get_state(bus_id):
@@ -38,12 +38,7 @@ def _get_state(bus_id):
 
 
 def start_bus(bus_id):
-    """Called by the /api/buses/<id>/start endpoint (or auto-start on server boot)."""
-    with _lock:
-        if bus_id in _started_buses:
-            return
-        _started_buses.add(bus_id)
-
+    """Start a bus. Its persisted status lets movement resume after a restart."""
     loc = run_query("SELECT * FROM bus_locations WHERE bus_id=%s", (bus_id,), fetch_one=True)
     bus = run_query("SELECT * FROM buses WHERE id=%s", (bus_id,), fetch_one=True)
     if loc["status"] == "not_started":
@@ -52,18 +47,6 @@ def start_bus(bus_id):
         )
         create_notification("student", f"{bus['bus_name']} has started its trip.", "bus_started", bus_id=bus_id)
         create_notification("admin", f"{bus['bus_name']} has started its trip.", "bus_started", bus_id=bus_id)
-
-
-def register_bus_as_started(bus_id):
-    """
-    Called by routes/driver.py when a driver starts a trip. Adds the bus to
-    the simulated thread's active set (with none of start_bus()'s own
-    status-change/notification side effects, since the driver flow already
-    handles those) so that if the driver's live GPS ever goes stale, the
-    simulated thread is ready to seamlessly take over ticking that bus.
-    """
-    with _lock:
-        _started_buses.add(bus_id)
 
 
 def _get_stops_in_order(route_id):
@@ -76,13 +59,7 @@ def _get_stops_in_order(route_id):
 def _tick_bus(bus):
     bus_id = bus["id"]
     loc = run_query("SELECT * FROM bus_locations WHERE bus_id=%s", (bus_id,), fetch_one=True)
-    if loc is None or loc["status"] in ("not_started", "reached_college"):
-        return
-    if is_gps_live(loc["gps_updated_at"]):
-        # A driver is actively streaming real GPS for this bus - the simulated
-        # thread stands down and lets services/live_tracking.py drive position,
-        # stop progress and notifications instead. It resumes automatically
-        # once the GPS feed goes stale (see is_gps_live()).
+    if loc is None or loc.get("location_source") == "gps" or loc["status"] in ("not_started", "reached_college"):
         return
 
     stops = _get_stops_in_order(bus["route_id"])
@@ -163,7 +140,7 @@ def _handle_college_arrival(bus, college_stop):
     if has_entered_college(loc["distance_covered_km"], college_stop["distance_from_start_km"]):
         now = datetime.now()
         run_query(
-            "UPDATE bus_locations SET status='reached_college', college_entry_detected=1, college_entry_time=%s WHERE bus_id=%s",
+            "UPDATE bus_locations SET status='reached_college', college_entry_detected=TRUE, college_entry_time=%s WHERE bus_id=%s",
             (now, bus["id"]), commit=True,
         )
         time_str = now.strftime("%I:%M %p")
@@ -178,13 +155,21 @@ def simulation_loop():
         try:
             buses = run_query("SELECT * FROM buses", fetch=True)
             for bus in buses:
-                if bus["id"] in _started_buses:
-                    _tick_bus(bus)
+                _tick_bus(bus)
         except Exception as e:
             print(f"[bus_simulation] tick error: {e}")
         time.sleep(SIMULATION_TICK_SECONDS)
 
 
 def start_background_simulation():
-    thread = threading.Thread(target=simulation_loop, daemon=True)
-    thread.start()
+    """Start exactly one in-process worker for this web process."""
+    global _simulation_thread
+    if not SIMULATION_ENABLED:
+        return
+    with _lock:
+        if _simulation_thread and _simulation_thread.is_alive():
+            return
+        _simulation_thread = threading.Thread(
+            target=simulation_loop, daemon=True, name="bus-simulation"
+        )
+        _simulation_thread.start()

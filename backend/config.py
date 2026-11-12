@@ -1,11 +1,9 @@
 """
 Central configuration for the Smart College Bus System backend.
 
-All secrets (DB password, session secret key) are read from environment
-variables - never hardcoded here, since this file is committed to git.
-For local development, copy backend/.env.example to backend/.env and fill
-in your real Postgres password there; .env is gitignored and loaded
-automatically via python-dotenv below.
+The application connects to PostgreSQL through the ``DATABASE_URL``
+environment variable. Keep credentials out of this file; use ``.env`` for
+local development and your host's environment-variable settings in production.
 """
 
 import os
@@ -13,29 +11,28 @@ from dotenv import load_dotenv
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
-# Render (and most managed Postgres hosts) provide one connection string via
-# DATABASE_URL - if it's set, use it directly and ignore the discrete DB_*
-# vars below (those are for local dev / hosts that don't provide a DSN).
-_DATABASE_URL = os.environ.get("DATABASE_URL")
+os.environ.setdefault("APP_ENV", "production" if os.environ.get("RENDER") == "true" else "development")
+os.environ.setdefault("TRUST_PROXY", "true" if os.environ.get("RENDER") == "true" else "false")
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if not DATABASE_URL and os.environ.get("DB_HOST"):
+    from psycopg.conninfo import make_conninfo
+    DATABASE_URL = make_conninfo(host=os.environ["DB_HOST"],port=os.environ.get("DB_PORT","5432"),
+        user=os.environ.get("DB_USER","postgres"),password=os.environ.get("DB_PASSWORD",""),
+        dbname=os.environ.get("DB_NAME","smart_bus_system"),sslmode=os.environ.get("DB_SSLMODE","prefer"))
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL is not configured. Add it to backend/.env or to the "
+        "deployment environment variables."
+    )
 
-if _DATABASE_URL:
-    DB_CONFIG = {"dsn": _DATABASE_URL}
-else:
-    DB_CONFIG = {
-        "host": os.environ.get("DB_HOST", "localhost"),
-        "port": int(os.environ.get("DB_PORT", "5432")),
-        "user": os.environ.get("DB_USER", "postgres"),
-        "password": os.environ.get("DB_PASSWORD", ""),
-        "dbname": os.environ.get("DB_NAME", "smart_bus_system"),
-        # "prefer" encrypts when the server supports it and falls back to an
-        # unencrypted connection otherwise - safe default for both local dev
-        # and a managed host. Override with DB_SSLMODE=require/disable if needed.
-        "sslmode": os.environ.get("DB_SSLMODE", "prefer"),
-    }
+# Browser maps need a public, HTTP-referrer-restricted Google Maps JavaScript
+# API key. It is intentionally supplied through the environment, never source.
+GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "")
 
-# Secret key used to sign session cookies. Set a real random value via the
-# SECRET_KEY env var in any shared/deployed environment.
+# Secret key used to sign simple session tokens
 SECRET_KEY = os.environ.get("SECRET_KEY", "smart-bus-system-dev-secret-change-me")
+if os.environ.get("APP_ENV") == "production" and (len(SECRET_KEY) < 32 or SECRET_KEY == "smart-bus-system-dev-secret-change-me"):
+    raise RuntimeError("Production requires a unique SECRET_KEY of at least 32 characters")
 
 # College geofence (simulated). In this prototype the "geofence" is simply
 # "has the bus reached the final stop (IFET College), i.e. distance_covered_km
@@ -48,6 +45,9 @@ COLLEGE_STOP_NAME = "IFET College"
 # in a couple of minutes instead of requiring the bus's real ~26km / 45 min.
 SIMULATION_TICK_SECONDS = 2
 SIM_SPEED_MULTIPLIER = 25   # simulated minutes of travel compressed per real tick minute equivalent
+
+# Simulation is opt-in and intended for a single-process demonstration.
+SIMULATION_ENABLED = os.environ.get("SIMULATION_ENABLED", "false").lower() == "true"
 
 # Time a bus "waits" at a stop for boarding, in simulation ticks
 STOP_WAIT_TICKS = 4

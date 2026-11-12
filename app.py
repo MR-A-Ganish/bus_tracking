@@ -17,6 +17,13 @@ import os
 _backend_app_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backend", "app.py")
 _spec = importlib.util.spec_from_file_location("backend_app", _backend_app_path)
 _backend_app = importlib.util.module_from_spec(_spec)
+# Existing Render services may still use gunicorn app:app as their start command.
+# The tracked migration runner also works through that entry point.
+if os.environ.get("RENDER") == "true":
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "backend"))
+    from migrate import migrate
+    migrate()
 _spec.loader.exec_module(_backend_app)
 
 app = _backend_app.app

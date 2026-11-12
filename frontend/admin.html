@@ -31,6 +31,7 @@
 </div>
 
 <div class="container">
+<p id="connection-status" role="status" class="small-muted">Connecting to fleet...</p>
 
   <div class="tabs" id="admin-tabs">
     <span class="tab-indicator" id="tab-indicator"></span>
@@ -40,7 +41,25 @@
     <button class="tab-btn" data-tab="students">🎓 Students</button>
     <button class="tab-btn" data-tab="drivers">🧑‍✈️ Drivers</button>
     <button class="tab-btn" data-tab="admins">🛡️ Admins</button>
+    <button class="tab-btn" data-tab="stops">Route Stops</button>
     <button class="tab-btn" data-tab="attendance">✅ Attendance</button>
+  </div>
+
+  <div class="tab-panel" id="tab-stops">
+    <div class="card">
+      <h2>Route stop coordinates</h2>
+      <p class="small-muted">Use verified stop coordinates. These positions control map markers and arrival detection.</p>
+      <div class="alert" id="stop-alert" role="status"></div>
+      <form id="stop-coordinate-form">
+        <div class="form-grid">
+          <div class="field"><label for="stop-coordinate-select">Route stop</label><select id="stop-coordinate-select" required></select></div>
+          <div class="field"><label for="stop-coordinate-name">Stop name</label><input id="stop-coordinate-name" maxlength="100" required></div>
+          <div class="field"><label for="stop-coordinate-latitude">Latitude</label><input id="stop-coordinate-latitude" type="number" min="-90" max="90" step="any" required></div>
+          <div class="field"><label for="stop-coordinate-longitude">Longitude</label><input id="stop-coordinate-longitude" type="number" min="-180" max="180" step="any" required></div>
+        </div>
+        <div class="form-actions"><button type="submit" class="btn" id="save-stop-coordinates">Save stop</button></div>
+      </form>
+    </div>
   </div>
 
   <!-- ===================== OVERVIEW ===================== -->
@@ -55,7 +74,7 @@
         <div class="stat-icon">📡</div>
       </div>
       <div class="card stat-card">
-        <div><h2>Total Passengers Today</h2><div class="metric" id="total-passengers">-</div></div>
+        <div><h2>Current Passengers</h2><div class="metric" id="total-passengers">-</div></div>
         <div class="stat-icon">🎓</div>
       </div>
       <div class="card stat-card">
@@ -71,7 +90,7 @@
           <thead>
             <tr>
               <th>Bus</th><th>Tracking</th><th>Status</th><th>Current Stop</th><th>Next Stop</th>
-              <th>Traffic</th><th>Passengers</th><th>College Entry</th><th>Actions</th>
+              <th>Traffic estimate</th><th>Passengers</th><th>College Entry</th><th>Actions</th>
             </tr>
           </thead>
           <tbody id="buses-table-body"></tbody>

@@ -1,17 +1,15 @@
-# Python
+backend/.env
+.env
 __pycache__/
 *.pyc
+.venv/
 venv/
-*.egg-info/
+backend/ai/*.joblib
 
-# Secrets - never commit real credentials
-backend/.env
+.local-backup/
+.deployment-repo/
 
-# Generated at runtime / first run - not source
-backend/ai/eta_model.joblib
+.playwright-cli/
+output/
+
 backend/ai/training_data.csv
-
-# OS / editor cruft
-.DS_Store
-Thumbs.db
-.vscode/

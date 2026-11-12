@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: college-bus-tracking
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python backend/migrate.py && gunicorn --chdir backend --bind 0.0.0.0:$PORT --workers 2 app:app
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: APP_ENV
+        value: production
+      - key: SIMULATION_ENABLED
+        value: "false"
+      - key: TRUST_PROXY
+        value: "true"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false

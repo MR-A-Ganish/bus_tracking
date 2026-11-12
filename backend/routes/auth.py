@@ -8,13 +8,15 @@ auth_bp = Blueprint("auth", __name__)
 @auth_bp.route("/api/login", methods=["POST"])
 def login():
     data = request.get_json(force=True) or {}
-    username = data.get("username", "").strip()
-    password = data.get("password", "")
+    username = (data.get("username") or "").strip()
+    password = data.get("password") or ""
 
     user = run_query("SELECT * FROM users WHERE username=%s", (username,), fetch_one=True)
     if not user or not check_password_hash(user["password"], password):
         return jsonify({"success": False, "message": "Invalid username or password"}), 401
 
+    session.clear()
+    session.permanent = True
     session["user_id"] = user["id"]
     session["role"] = user["role"]
 
@@ -22,16 +24,25 @@ def login():
 
     if user["role"] == "student":
         student = run_query("SELECT * FROM students WHERE user_id=%s", (user["id"],), fetch_one=True)
+        if not student:
+            session.clear()
+            return jsonify(success=False,message="Account profile is missing. Contact management."),403
         session["student_id"] = student["id"]
         profile["student_id"] = student["id"]
         profile["name"] = student["name"]
     elif user["role"] == "driver":
         driver = run_query("SELECT * FROM drivers WHERE user_id=%s", (user["id"],), fetch_one=True)
+        if not driver:
+            session.clear()
+            return jsonify(success=False,message="Account profile is missing. Contact management."),403
         session["driver_id"] = driver["id"]
         profile["driver_id"] = driver["id"]
         profile["name"] = driver["name"]
     else:
         admin = run_query("SELECT * FROM admins WHERE user_id=%s", (user["id"],), fetch_one=True)
+        if not admin:
+            session.clear()
+            return jsonify(success=False,message="Account profile is missing. Contact management."),403
         session["admin_id"] = admin["id"]
         profile["admin_id"] = admin["id"]
         profile["name"] = admin["name"]
@@ -65,12 +76,19 @@ def register():
 
     if not username or not password or not name:
         return jsonify({"success": False, "message": "Username, password and name are required"}), 400
-    if len(password) < 4:
-        return jsonify({"success": False, "message": "Password must be at least 4 characters"}), 400
+    if len(password) < 12:
+        return jsonify({"success": False, "message": "Password must be at least 12 characters"}), 400
 
     if run_query("SELECT id FROM users WHERE username=%s", (username,), fetch_one=True):
         return jsonify({"success": False, "message": "That username is already taken"}), 409
 
+    if bool(bus_id) != bool(stop_id):
+        return jsonify(success=False, message="Choose both a bus and its stop"), 400
+    if bus_id and stop_id:
+        valid = run_query("""SELECT s.id FROM bus_stops s JOIN buses b ON b.route_id=s.route_id
+                            WHERE b.id=%s AND s.id=%s""", (bus_id,stop_id), fetch_one=True)
+        if not valid:
+            return jsonify(success=False, message="The selected stop does not belong to this bus route"), 400
     user_id = run_query(
         "INSERT INTO users (username, password, role) VALUES (%s,%s,'student')",
         (username, generate_password_hash(password)), commit=True,
@@ -86,6 +104,8 @@ def register():
             (student_id, bus_id, stop_id), commit=True,
         )
 
+    session.clear()
+    session.permanent = True
     session["user_id"] = user_id
     session["role"] = "student"
     session["student_id"] = student_id

@@ -4,10 +4,8 @@ Run this ONCE after creating the database with database/schema.sql:
     python seed.py
 
 It creates the demo login accounts (with securely hashed passwords) and
-sample student -> bus -> stop / driver -> bus assignments described in the
-project README. Safe to re-run (it clears and re-creates the demo rows each
-time, and resets any bus to a clean not-started state - including clearing
-any live GPS data from a previous test run).
+sample student -> bus -> stop assignments described in the project README.
+Safe to re-run (it clears and re-creates the demo rows each time).
 """
 
 import os
@@ -20,6 +18,8 @@ from database import run_query
 
 
 def seed():
+    if run_query("SELECT COUNT(*) AS count FROM users", fetch_one=True)["count"]:
+        raise RuntimeError("Demo seeding requires an empty users table. Existing accounts must be preserved.")
     print("Seeding demo users...")
 
     # Clear old demo data (children first, to satisfy foreign keys)
@@ -32,31 +32,37 @@ def seed():
 
     # --- Users ---
     student01_id = run_query(
-        "INSERT INTO users (username, password, role) VALUES (%s,%s,'student')",
-        ("student01", generate_password_hash("1234")), commit=True,
+        "INSERT INTO users (username, password, role) VALUES (%s,%s,'student') RETURNING id",
+        ("student01", generate_password_hash("1234")), fetch_one=True, commit=True,
     )
+    student01_id = student01_id["id"]
     student02_id = run_query(
-        "INSERT INTO users (username, password, role) VALUES (%s,%s,'student')",
-        ("student02", generate_password_hash("1234")), commit=True,
+        "INSERT INTO users (username, password, role) VALUES (%s,%s,'student') RETURNING id",
+        ("student02", generate_password_hash("1234")), fetch_one=True, commit=True,
     )
+    student02_id = student02_id["id"]
     admin01_id = run_query(
-        "INSERT INTO users (username, password, role) VALUES (%s,%s,'admin')",
-        ("admin01", generate_password_hash("admin123")), commit=True,
+        "INSERT INTO users (username, password, role) VALUES (%s,%s,'admin') RETURNING id",
+        ("admin01", generate_password_hash("admin123")), fetch_one=True, commit=True,
     )
+    admin01_id = admin01_id["id"]
     driver01_id = run_query(
-        "INSERT INTO users (username, password, role) VALUES (%s,%s,'driver')",
-        ("driver01", generate_password_hash("drive123")), commit=True,
+        "INSERT INTO users (username, password, role) VALUES (%s,%s,'driver') RETURNING id",
+        ("driver01", generate_password_hash("driver123")), fetch_one=True, commit=True,
     )
+    driver01_id = driver01_id["id"]
 
     # --- Students ---
     priya_id = run_query(
-        "INSERT INTO students (user_id, name, register_no, phone) VALUES (%s,%s,%s,%s)",
-        (student01_id, "Priya R", "22ECE045", "9876543210"), commit=True,
+        "INSERT INTO students (user_id, name, register_no, phone) VALUES (%s,%s,%s,%s) RETURNING id",
+        (student01_id, "Priya R", "22ECE045", "9876543210"), fetch_one=True, commit=True,
     )
+    priya_id = priya_id["id"]
     arun_id = run_query(
-        "INSERT INTO students (user_id, name, register_no, phone) VALUES (%s,%s,%s,%s)",
-        (student02_id, "Arun K", "22ECE012", "9876543211"), commit=True,
+        "INSERT INTO students (user_id, name, register_no, phone) VALUES (%s,%s,%s,%s) RETURNING id",
+        (student02_id, "Arun K", "22ECE012", "9876543211"), fetch_one=True, commit=True,
     )
+    arun_id = arun_id["id"]
 
     # --- Admin ---
     run_query(
@@ -64,50 +70,41 @@ def seed():
         (admin01_id, "Transport Officer"), commit=True,
     )
 
-    # --- Driver (assigned to Bus 01) ---
+    # --- Driver ---
     run_query(
-        "INSERT INTO drivers (user_id, name, phone, license_no, bus_id) VALUES (%s,%s,%s,%s,%s)",
-        (driver01_id, "Mr. Raja", "9876500000", "TN31-2019-0004521", 1), commit=True,
+        "INSERT INTO drivers (user_id, name, bus_id) VALUES (%s,%s,%s)",
+        (driver01_id, "Mr. Raja", 1), commit=True,
     )
 
-    # --- Bus stop lookups (route's first stop / last stop by sequence_order,
-    # so this keeps working however many intermediate stops are configured) ---
-    first_stop = run_query(
-        "SELECT * FROM bus_stops WHERE route_id=1 ORDER BY sequence_order ASC LIMIT 1", fetch_one=True
-    )
-    second_stop = run_query(
-        "SELECT * FROM bus_stops WHERE route_id=1 ORDER BY sequence_order ASC LIMIT 1 OFFSET 1", fetch_one=True
-    )
-    last_stop = run_query(
-        "SELECT * FROM bus_stops WHERE route_id=1 ORDER BY sequence_order DESC LIMIT 1", fetch_one=True
-    )
-    boarding_stop = second_stop or last_stop
+    # --- Bus stop lookups ---
+    kandamangalam = run_query("SELECT id FROM bus_stops WHERE stop_name='Kandamangalam'", fetch_one=True)
+    thirunavalur = run_query("SELECT id FROM bus_stops WHERE stop_name='Thirunavalur'", fetch_one=True)
 
-    # --- Assignments (both demo students board at the same convenient stop) ---
+    # --- Assignments ---
     run_query(
         "INSERT INTO student_bus_assignments (student_id, bus_id, stop_id) VALUES (%s,1,%s)",
-        (priya_id, boarding_stop["id"]), commit=True,
+        (priya_id, kandamangalam["id"]), commit=True,
     )
     run_query(
         "INSERT INTO student_bus_assignments (student_id, bus_id, stop_id) VALUES (%s,1,%s)",
-        (arun_id, last_stop["id"]), commit=True,
+        (arun_id, thirunavalur["id"]), commit=True,
     )
 
     # Reset bus passenger counts / live location state for a clean demo run
     run_query("UPDATE buses SET current_passengers=0", commit=True)
     run_query(
         """UPDATE bus_locations SET distance_covered_km=0, status='not_started',
-           current_stop_id=%s, next_stop_id=%s,
-           college_entry_detected=0, college_entry_time=NULL,
-           gps_lat=NULL, gps_lng=NULL, gps_accuracy_m=NULL, gps_speed_kmph=NULL, gps_updated_at=NULL""",
-        (first_stop["id"], (second_stop or last_stop)["id"]), commit=True,
+           current_stop_id=(SELECT id FROM bus_stops WHERE stop_name='Villupuram Bus Stand'),
+           next_stop_id=(SELECT id FROM bus_stops WHERE stop_name='Mundiyampakkam'),
+           college_entry_detected=FALSE, college_entry_time=NULL""",
+        commit=True,
     )
 
     print("Done. Demo accounts:")
-    print(f"  Student login: student01 / 1234     (Priya R, Bus 01, stop: {boarding_stop['stop_name']})")
-    print(f"  Student login: student02 / 1234     (Arun K, Bus 01, stop: {last_stop['stop_name']})")
+    print("  Student login: student01 / 1234   (Priya R, Bus 01, stop: Kandamangalam)")
+    print("  Student login: student02 / 1234   (Arun K, Bus 01, stop: Thirunavalur)")
+    print("  Driver login:  driver01 / driver123 (Mr. Raja, Bus 01)")
     print("  Admin login:   admin01 / admin123")
-    print("  Driver login:  driver01 / drive123   (Mr. Raja, Bus 01 - open driver.html and grant location access)")
 
 
 if __name__ == "__main__":

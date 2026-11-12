@@ -1,4 +1,7 @@
 const API = "";
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+}
 let lookup = { buses: [], stops: [] };
 
 const usernameInput = document.getElementById("reg-username");
@@ -24,7 +27,7 @@ async function loadLookup() {
   lookup = { buses: data.buses || [], stops: data.stops || [] };
 
   const busSelect = document.getElementById("reg-bus");
-  busSelect.innerHTML = lookup.buses.map((b) => `<option value="${b.id}">${b.bus_name}</option>`).join("");
+  busSelect.innerHTML = lookup.buses.map((b) => `<option value="${b.id}">${escapeHtml(b.bus_name)}</option>`).join("");
   busSelect.addEventListener("change", populateStops);
   populateStops();
 }
@@ -34,7 +37,7 @@ function populateStops() {
   const bus = lookup.buses.find((b) => b.id === busId);
   const stopSelect = document.getElementById("reg-stop");
   const stops = bus ? lookup.stops.filter((s) => s.route_id === bus.route_id) : lookup.stops;
-  stopSelect.innerHTML = stops.map((s) => `<option value="${s.id}">${s.stop_name}</option>`).join("");
+  stopSelect.innerHTML = stops.map((s) => `<option value="${s.id}">${escapeHtml(s.stop_name)}</option>`).join("");
 }
 
 document.getElementById("register-form").addEventListener("submit", async (e) => {

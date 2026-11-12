@@ -1,4 +1,7 @@
 const API = "";
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+}
 let myAssignment = null;
 let routeStops = [];
 let html5QrCode = null;
@@ -156,7 +159,7 @@ function renderTimeline() {
     const timeHtml = time ? `<span class="time">${fmtTime(time)}</span>` : "";
     const mineTag = isMine ? '<span class="mine-tag">You board here</span>' : "";
 
-    return `<li class="${stateClass}"><span class="dot"></span><span class="stop-name">${stop.stop_name}</span>${mineTag}${timeHtml}</li>`;
+    return `<li class="${stateClass}"><span class="dot"></span><span class="stop-name">${escapeHtml(stop.stop_name)}</span>${mineTag}${timeHtml}</li>`;
   }).join("");
 }
 
@@ -204,7 +207,7 @@ function renderStopsOnMap() {
     if (stop.latitude == null || stop.longitude == null) return;
     const marker = L.marker([stop.latitude, stop.longitude], { icon: stopDivIcon(false) })
       .addTo(map)
-      .bindPopup(`<strong>${stop.stop_name}</strong><br>${stop.distance_from_start_km} km from start`);
+      .bindPopup(`<strong>${escapeHtml(stop.stop_name)}</strong><br>${stop.distance_from_start_km} km from start`);
     stopMarkers[stop.id] = marker;
   });
 }
@@ -274,12 +277,12 @@ async function refreshLocationAndEta() {
     trackingBadge.className = `badge ${loc.is_live ? "low live-pulse" : "not_started"}`;
 
     const trafficLabel = document.getElementById("traffic-label");
-    trafficLabel.innerHTML = `Traffic: <span class="badge ${loc.traffic_condition}">${loc.traffic_condition}</span>`;
+    trafficLabel.textContent = loc.location_source === "gps" ? `Speed ${Math.round(loc.speed_kmph)} km/h` : `Demo traffic ${loc.traffic_condition}`;
 
     updateStopMarkers(loc.distance_covered_km);
     updateBusMarker(
       loc.lat, loc.lng, loc.status,
-      `<strong>${loc.bus_name}</strong><br>${loc.status.replace(/_/g, " ")}<br>${loc.current_passengers}/${loc.capacity} on board`
+      `<strong>${escapeHtml(loc.bus_name)}</strong><br>${loc.status.replace(/_/g, " ")}<br>${loc.current_passengers}/${loc.capacity} on board`
     );
 
     document.getElementById("passenger-status").textContent = `${loc.current_passengers} / ${loc.capacity}`;
@@ -287,36 +290,46 @@ async function refreshLocationAndEta() {
 
     setMascotDozing(loc.status === "not_started");
     if (loc.status === "not_started") {
-      updateGreetingSub(`${loc.bus_name} hasn't started its trip yet.`);
+      updateGreetingSub(`${escapeHtml(loc.bus_name)} hasn't started its trip yet.`);
     } else if (loc.status === "reached_college") {
-      updateGreetingSub(`${loc.bus_name} has reached IFET College. Journey complete!`);
+      updateGreetingSub(`${escapeHtml(loc.bus_name)} has reached IFET College. Journey complete!`);
     } else {
-      updateGreetingSub(`${loc.bus_name} is ${loc.status.replace(/_/g, " ")} towards ${loc.next_stop_name || "the college"}.`);
+      updateGreetingSub(`${escapeHtml(loc.bus_name)} is ${loc.status.replace(/_/g, " ")} towards ${loc.next_stop_name || "the college"}.`);
     }
 
     if (loc.status === "arrived_at_stop" && loc.current_stop_id === myAssignment.stop_id) {
       if (!arrivalWaved) {
         arrivalWaved = true;
         mascotWave();
-        updateGreetingSub(`${loc.bus_name} has arrived at your stop - ${myAssignment.stop_name}!`);
+        updateGreetingSub(`${escapeHtml(loc.bus_name)} has arrived at your stop - ${myAssignment.stop_name}!`);
       }
     } else {
       arrivalWaved = false;
     }
 
     const etaData = await api(`/api/eta/predict?bus_id=${myAssignment.bus_id}&stop_id=${myAssignment.stop_id}`);
+    if (!etaData.success) {
+      document.getElementById("eta-value").textContent = "--";
+      document.getElementById("eta-label").textContent = etaData.message || "ETA unavailable";
+      document.getElementById("distance-value").textContent = "--";
+    }
     if (etaData.success) {
       const etaMinutes = etaData.eta_minutes;
       document.getElementById("eta-value").textContent = etaMinutes === 0 ? "0" : `${etaMinutes}`;
       document.getElementById("eta-label").textContent =
-        etaMinutes === 0 ? `Arrived at ${myAssignment.stop_name}` : `ETA to ${myAssignment.stop_name} (AI prototype)`;
+        etaData.estimate_label || (etaMinutes === 0 ? `Arrived at ${myAssignment.stop_name}` : `ETA to ${myAssignment.stop_name} (AI prototype)`);
       document.getElementById("distance-value").textContent = `${etaData.distance_km} km`;
-      document.getElementById("stops-remaining-label").textContent = `${etaData.stops_remaining} stops remaining`;
+      document.getElementById("stops-remaining-label").textContent = etaData.stops_remaining == null ? "Approximate distance; road traffic unavailable" : `${etaData.stops_remaining} stops remaining`;
       updateEtaRing(etaMinutes);
     }
 
+    if (busMarker) busMarker.setOpacity(loc.is_live ? 1 : 0.5);
     renderTimeline();
-  } catch (e) { /* keep polling */ }
+  } catch (e) {
+    document.getElementById("tracking-mode-badge").textContent = "Connection lost ? last known location";
+    document.getElementById("eta-value").textContent = "--";
+    if (busMarker) busMarker.setOpacity(0.5);
+  }
 }
 
 async function refreshNotifications() {
@@ -327,7 +340,7 @@ async function refreshNotifications() {
     list.innerHTML = '<li class="small-muted">No notifications yet.</li>';
   } else {
     list.innerHTML = lastNotifications
-      .map((n) => `<li>${n.message}<span class="time">${new Date(n.created_at).toLocaleTimeString()}</span></li>`)
+      .map((n) => `<li>${escapeHtml(n.message)}<span class="time">${new Date(n.created_at).toLocaleTimeString()}</span></li>`)
       .join("");
   }
   renderTimeline();
@@ -391,5 +404,5 @@ document.getElementById("logout-btn").addEventListener("click", async () => {
   refreshLocationAndEta();
   refreshNotifications();
   setInterval(refreshLocationAndEta, 3000);
-  setInterval(refreshNotifications, 5000);
+  setInterval(() => refreshNotifications().catch(() => {}), 5000);
 })();

@@ -1,272 +1,137 @@
-# Smart College Bus Tracking and Transportation Management System
+# College bus tracking
 
-A complete, working final-year project: Flask + PostgreSQL backend, a real
-Machine-Learning ETA prediction model, simulated GPS bus tracking, QR-code
-attendance, college-entry geofence detection, route optimization, and
-separate Student / Management dashboards.
+Flask serves the student, driver and management dashboards and a PostgreSQL-backed API.
+Drivers share their phone GPS with assigned students and management. The admin fleet map
+and student map refresh every three seconds. GPS fixes older than 30 seconds are marked
+stale. Stopping sharing preserves the last known location with an offline indicator.
 
-This is a **prototype** built for a final-year project review — the ETA
-model is trained on generated sample data (clearly labeled as such), and
-GPS/geofencing is simulated. Every part of the code is structured so real
-GPS hardware or real historical data can be dropped in later without
-rewriting the architecture.
+## Run locally
 
----
-
-## 1. What's actually implemented (no faked features)
-
-| Feature | How it works |
-|---|---|
-| Login + roles | PostgreSQL `users` table, hashed passwords, Flask sessions — every student and admin has their own real account, not just a fixed demo pair |
-| Admin management panel | Admin dashboard has full CRUD (add/edit/delete) for students, buses, and other admin accounts, with bus↔stop assignment — `backend/routes/admin.py` |
-| Live tracking map | Interactive Leaflet/OpenStreetMap view showing each bus's marker moving in real time along the actual route, computed by interpolating its simulated GPS progress between stops (`backend/routes/buses.py`) |
-| Bus tracking | Background Python thread updates `bus_locations` in PostgreSQL every 2s; frontend polls the API |
-| AI ETA prediction | Real `scikit-learn` RandomForestRegressor trained on generated data (`backend/ai/eta_model.py`), served via `/api/eta/predict` |
-| QR attendance | Real QR codes generated server-side (`qrcode` library) and scanned in-browser via device camera (`html5-qrcode`), with a manual-entry fallback |
-| College-entry detection | Simulated geofence check (`backend/services/geofence.py`) comparing simulated distance to the college stop's distance |
-| Route optimization | Dijkstra's shortest-path algorithm over alternate road segments (`backend/services/route_optimizer.py`) |
-| Database | Real PostgreSQL, 12 tables, Flask talks to it directly via `psycopg2` (no in-memory-only data) |
-| Notifications | Rows written to a PostgreSQL `notifications` table by real system events (bus started, approaching stop, boarding, delay, college entry, capacity warning) |
-
-The frontend (`frontend/`) is a redesigned, responsive dashboard (Inter font,
-card-based layout, live badges/animations) rather than a bare prototype UI.
-The live map uses OpenStreetMap tiles over the internet (no API key needed)
-— the rest of the app works fully offline once loaded.
-
----
-
-## 2. Prerequisites (Windows)
-
-Install these once:
-
-1. **Python 3.10+** — https://www.python.org/downloads/ (tick "Add Python to PATH" during install)
-2. **PostgreSQL Server** — https://www.postgresql.org/download/
-   During setup, set a password for the `postgres` user and remember it.
-3. **VS Code** — https://code.visualstudio.com/
-4. **Git** (optional, only if you want version control) — https://git-scm.com/
-
----
-
-## 3. Project structure
-
-```
-SmartCollegeBusSystem/
-├── backend/
-│   ├── app.py                  # Flask entry point - run this
-│   ├── config.py               # DB credentials & simulation settings - EDIT THIS
-│   ├── database.py             # PostgreSQL connection helper
-│   ├── seed.py                 # Creates demo login accounts - run once after schema
-│   ├── routes/                 # API endpoints (auth, buses, eta, attendance, admin...)
-│   ├── services/                # bus_simulation.py, geofence.py, route_optimizer.py, notification_service.py
-│   └── ai/
-│       ├── eta_model.py        # trains + serves the ML ETA model
-│       └── training_data.csv   # auto-generated on first run
-├── frontend/
-│   ├── index.html              # Login page
-│   ├── student.html            # Student dashboard
-│   ├── admin.html              # Management dashboard
-│   ├── css/style.css
-│   └── js/ (login.js, student.js, admin.js)
-├── database/
-│   └── schema.sql              # Run this in PostgreSQL first
-├── requirements.txt
-└── README.md                   # (this file)
-```
-
----
-
-## 4. Setup — exact steps
-
-Open the project folder in VS Code (`File > Open Folder...`), then open a
-terminal in VS Code (`` Ctrl + ` ``) and run the following, in order.
-
-### Step 1 — Create a virtual environment and install dependencies
+Use Python 3.11 or 3.12 with the pinned requirements.
 
 ```powershell
-cd SmartCollegeBusSystem
-python -m venv venv
-venv\Scripts\activate
+python -m venv .venv
+.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+Copy-Item backend/.env.example backend/.env
 ```
 
-You should see `(venv)` appear at the start of your terminal prompt once
-the virtual environment is active.
+Set DATABASE_URL and a unique SECRET_KEY in backend/.env. Preserve your existing .env
+if it is already configured. The app uses PostgreSQL. database/schema.sql and database/schema.postgresql.sql both initialize PostgreSQL
+without dropping existing tables.
 
-### Step 2 — Create the database
-
-Open a terminal and create an empty database first (schema.sql only creates
-tables inside it, it doesn't create the database itself):
+For a new empty database, apply database/schema.postgresql.sql with a PostgreSQL SQL
+client. For an existing database, skip initialization. Apply tracked additive migrations.
 
 ```powershell
-createdb -U postgres smart_bus_system
+python backend/migrate.py
+python backend/app.py
 ```
 
-If `createdb` isn't recognized, add PostgreSQL's `bin` folder to your PATH
-(typically `C:\Program Files\PostgreSQL\<version>\bin`), or use the full path.
-Then load the schema:
+Open http://127.0.0.1:5000. A local development server works for desktop testing.
+Phone GPS requires an HTTPS deployment and permission to access location.
+See the [browser geolocation documentation](https://developer.mozilla.org/en-US/docs/Web/API/Geolocation/watchPosition).
+
+## Driver and student trial
+
+1. Deploy the updated backend and frontend to the same HTTPS origin.
+2. Log in as the assigned driver on a GPS-capable phone.
+3. Select Start trip and allow location permission.
+4. Keep the page visible and the phone screen on throughout the trip.
+5. Log in as management and an assigned student in separate browser sessions.
+6. Confirm both maps show the phone location and recent timestamps.
+7. Stop sharing and confirm both dashboards mark the location offline.
+
+Management can end an active trip from the fleet table, including when a driver loses
+access to the phone. Trip history is retained.
+
+Browser GPS may pause when the screen locks or the page is backgrounded. Continuous
+background fleet tracking requires a native mobile client or a dedicated tracker.
+The GPS ingestion endpoint currently authenticates driver browser sessions.
+
+## Database updates
+
+python backend/migrate.py applies each SQL migration once, inside a transaction protected
+by an advisory lock. Existing accounts and operational data are preserved. The GPS
+migration adds coordinates, accuracy, observation time, sharing state, indexed GPS
+history and supporting lookup indexes. Back up the database before operational upgrades.
+GPS history is indexed by bus and observation time. Configure a retention period appropriate for the college before long-term operation.
+
+The demo seed script only works with an empty users table. On a fresh demo database,
+python backend/seed.py creates student01 / 1234, student02 / 1234,
+admin01 / admin123 and driver01 / driver123. Use individual passwords for real users. Create accounts and reset passwords with hidden prompts.
 
 ```powershell
-psql -U postgres -d smart_bus_system -f database\schema.sql
+python backend/manage_user.py officer --role admin --name "Transport Officer"
+python backend/manage_user.py driver02 --role driver --name "Driver Name" --bus-id 2
+python backend/manage_user.py student03 --role student --name "Student Name" --bus-id 1 --stop-id 3
+python backend/manage_user.py admin01 --reset-password
 ```
 
-This creates all 12 tables and sample buses/stops/routes.
+## Deployment configuration
 
-### Step 3 — Configure your database password
+Set DATABASE_URL, SECRET_KEY, APP_ENV=production and SIMULATION_ENABLED=false in the
+hosting environment. Set TRUST_PROXY=true only behind the hosting reverse proxy. Production secrets must be at least 32 characters. Use an HTTPS
+reverse proxy and run from the repository root on a Linux host.
 
-Copy `backend/.env.example` to `backend/.env` and set your PostgreSQL
-password:
-
-```
-DB_HOST=localhost
-DB_PORT=5432
-DB_USER=postgres
-DB_PASSWORD=YOUR_POSTGRES_PASSWORD_HERE
-DB_NAME=smart_bus_system
+```sh
+python backend/migrate.py
+gunicorn --chdir backend --bind 0.0.0.0:8000 --workers 2 app:app
 ```
 
-(`.env` is gitignored and loaded automatically by `backend/config.py` via
-python-dotenv. Alternatively, set these as real environment variables instead
-of using a `.env` file.)
+/api/health checks database connectivity. The app has same-origin authenticated APIs,
+HTTP-only cookies, SameSite=Lax, secure cookies in production, and GPS ownership checks.
+For development simulations only, set SIMULATION_ENABLED=true and use one server process.
+Simulation skips buses that have received real GPS.
 
-### Step 4 — Create the demo login accounts
+## Verification and remaining operational work
 
 ```powershell
-cd backend
-python seed.py
+python -m unittest discover -s tests -v
+python -m compileall -q backend
+node --check frontend/js/driver.js
+node --check frontend/js/student.js
+node --check frontend/js/admin.js
 ```
 
-This creates the demo accounts and sample student→bus→stop assignments.
-Safe to re-run any time to reset the demo data.
+The tests cover GPS validation, authentication, assignment checks, cross-origin requests,
+out-of-order fixes and freshness. Real phone permissions, map rendering and a moving-bus
+trial still need verification on the deployed HTTPS site.
 
-### Step 5 — Train the ETA model (optional — happens automatically too)
+Replace sample stop coordinates with verified college route data before use. Real GPS
+updates the map directly. Its ETA is explicitly labeled as a straight-line estimate and
+does not incorporate road traffic. GPS fixes with accuracy within 100 metres drive stop arrival and college-entry events.
+Management can correct names and coordinates under Route Stops. Route optimization
+remains a sample-road demonstration. Boarding codes are signed, expire after two minutes and
+refresh on the driver dashboard every minute. Attendance, capacity and notifications
+update in one transaction under a bus row lock. Attendance allows one boarding per student per trip. Ending a trip resets the active
+passenger count and permits another trip on the configured route. Passenger drop-offs
+and reversing route direction are not modeled.
+The optional ML ETA uses synthetic training data for simulation.
 
-```powershell
-python ai\eta_model.py
-```
+## Render release
 
-This generates `training_data.csv` and `eta_model.joblib`. If you skip this
-step, the first API call to `/api/eta/predict` will train it automatically.
+The render.yaml Blueprint describes a web service using an existing DATABASE_URL.
+It runs additive migrations before Gunicorn, enables secure cookies and trusts the
+single hosting reverse proxy. When updating the existing Render service, set its
+build and start commands to the values in render.yaml and apply those environment
+settings. Preserve the existing production SECRET_KEY so active sessions remain valid.
+Push these project files to the Git repository connected to Render, then deploy that
+commit. The source repository is https://github.com/MR-A-Ganish/bus_tracking. Render should
+deploy its main branch. The root WSGI entry point applies tracked migrations on Render
+even when the service retains its existing gunicorn app:app start command.
 
-### Step 6 — Run the server
+## Operational verification
 
-```powershell
-python app.py
-```
+python tests/integration_postgres.py runs real API and concurrency checks in a generated
+isolated PostgreSQL schema and removes it afterward. It requires schema-creation
+permission on the configured database. No operational student or GPS records are used.
+python tests/browser_server.py starts a localhost-only review server backed by another
+isolated schema with disposable accounts. POST /__test_shutdown to stop it and remove
+the schema. Test accounts use the password browser-test-password and usernames
+admin-demo, driver-demo and student-demo.
 
-You should see:
-```
-Smart College Bus System backend running at http://127.0.0.1:5000
-```
-
-### Step 7 — Open the app
-
-Open your browser to **http://127.0.0.1:5000**
-
----
-
-## 5. Demo accounts
-
-| Role | Username | Password | Notes |
-|---|---|---|---|
-| Student | `student01` | `1234` | Priya R — Bus 01, stop: Kandamangalam |
-| Student | `student02` | `1234` | Arun K — Bus 01, stop: Thirunavalur |
-| Admin | `admin01` | `admin123` | Transport Officer |
-
-These three are seeded by `seed.py` so the login page always has something
-to demo out of the box. Every other student/admin account is created and
-managed from the **Management dashboard → Students / Buses / Admins** tabs
-(add, edit, delete) — there's no limit on how many real accounts you create.
-
----
-
-## 6. How to demo the full flow
-
-1. Log in as **admin01** in one browser tab.
-2. In the Management dashboard's **Overview** tab, click **Start** next to Bus 01.
-3. Open the **Fleet Map** tab to watch Bus 01's marker move live on the map.
-4. Open a second (private/incognito) browser window and log in as **student01**.
-5. Watch the Student dashboard: the live map shows the bus moving along the
-   route, the bus's status changes (moving → arrived at stop → waiting →
-   moving), and the ETA to Kandamangalam updates live from the trained ML
-   model.
-6. When the bus reaches Kandamangalam, go to `http://127.0.0.1:5000/api/buses/1/qr-code-text`
-   in a browser tab logged in as the student (or use the "Scan QR with Camera"
-   button and point it at the QR image from `/api/buses/1/qr`) to board.
-   You can also just paste the QR text into the manual fallback field on the
-   student dashboard.
-7. Watch the passenger count update, and check the Management dashboard's
-   Attendance tab and Notifications panel.
-8. Let the simulation continue — when Bus 01 reaches IFET College, the
-   Management dashboard's "College Entries Today" counter and notification
-   feed will show `"Bus 01 has entered IFET College at ..."`.
-9. Try the **Management dashboard → Students** tab: add a brand-new student
-   account, assign them to a bus/stop, then log in as that student in another
-   window to show the account is fully live.
-
----
-
-## 7. Notes on the AI ETA model (for your project review)
-
-- Real bus-GPS history isn't available for a student project, so
-  `backend/ai/eta_model.py` **generates a synthetic training dataset**
-  (`generate_training_data()`) using a physics-based formula (distance ÷
-  speed, scaled by a traffic delay factor, plus per-stop boarding time and
-  random noise) — this mimics how real travel time behaves.
-- A `RandomForestRegressor` (scikit-learn) is trained on that data with an
-  80/20 train/test split. On a typical run it achieves roughly 2–3 minutes
-  Mean Absolute Error on the held-out test set — printed to the console when
-  you run `python ai/eta_model.py`.
-- Features: `distance_km`, `avg_speed_kmph`, `traffic_condition` (0/1/2),
-  `stops_remaining`.
-- This is clearly a **prototype limitation** — swapping in real historical
-  GPS data (once available) is a matter of replacing `generate_training_data()`
-  with a loader for real trip logs; the rest of the pipeline (train/predict/API)
-  stays the same.
-
-## 8. Notes on route optimization (for your project review)
-
-The 5 stops themselves are fixed (a college bus can't skip stops), but
-`backend/services/route_optimizer.py` models a small graph where each pair
-of consecutive stops has **two alternate road options** (e.g. Main Road vs
-Bypass Road), each with different traffic sensitivity. **Dijkstra's shortest
-path algorithm** picks the fastest option per hop given current traffic —
-a genuine, standard graph algorithm that's easy to explain in a viva, not a
-claim of commercial-grade navigation.
-
-## 9. Limitations to mention in your review (be upfront about these)
-
-- GPS is simulated (distance increases over time on a fixed timer), not real
-  hardware — but the code is structured (`geofence.py`, `bus_simulation.py`)
-  so a real GPS/GNSS module could replace the simulated distance update with
-  minimal changes.
-- The live map's bus stop coordinates are approximate points along the real
-  Villupuram → IFET College corridor (not surveyed GPS fixes), and the bus
-  marker's position is linearly interpolated between the current and next
-  stop based on simulated progress — a straight-line approximation of the
-  actual road, which is a reasonable simplification for a prototype.
-- The ML model is trained on generated, not historical, data.
-- The background simulation thread keeps some ephemeral state in memory
-  (`services/bus_simulation.py`), which works for the single-process
-  `python app.py` dev server used here, but would need a shared store
-  (e.g. Redis) if you ever ran multiple server processes.
-- QR codes are per-bus-per-day (not per-boarding), which is simple and
-  explainable, but in a production system you'd likely rotate them more
-  frequently for tighter security.
-
----
-
-## 10. Troubleshooting
-
-- **"Could not connect to PostgreSQL"** — check `backend/.env` (or your
-  environment variables) match your Postgres username/password/port, and
-  that the PostgreSQL service is running (`services.msc` on Windows → look
-  for "postgresql-x64-\<version\>" → Start).
-- **Port 5000 already in use** — close whatever else is using it, or change
-  the port in the last lines of `backend/app.py`.
-- **Camera QR scanning doesn't work** — some browsers block camera access on
-  `http://` (non-HTTPS) for anything other than `localhost`. Since this runs
-  on `127.0.0.1`/`localhost`, it should work in Chrome/Edge; if not, use the
-  manual QR-text fallback field on the student dashboard.
-- **`pip install` fails on `psycopg2-binary`** — make sure you're using the
-  virtual environment (`venv\Scripts\activate`) and a Python version between
-  3.10 and 3.12.
+The backend pools up to five database connections per server process. Authentication,
+management changes and notifications share one transaction per HTTP request. Production
+uses two workers by default. Set the total worker count within your database connection
+limit. The public health endpoint reports migration readiness and the Render commit.
