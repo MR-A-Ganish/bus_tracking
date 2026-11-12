@@ -29,6 +29,7 @@ from routes.admin import admin_bp
 from routes.drivers import drivers_bp
 from routes.driver import driver_bp
 from routes.maps import maps_bp
+from routes.route_management import route_management_bp
 from services.bus_simulation import start_background_simulation
 
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
@@ -40,7 +41,7 @@ if os.environ.get("TRUST_PROXY", "false").lower() == "true":
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
                   SESSION_COOKIE_SECURE=os.environ.get("APP_ENV") == "production",
-                  PERMANENT_SESSION_LIFETIME=timedelta(hours=12), MAX_CONTENT_LENGTH=16384)
+                  PERMANENT_SESSION_LIFETIME=timedelta(hours=12), MAX_CONTENT_LENGTH=262144)
 from routes.tracking import tracking_bp
 app.register_blueprint(tracking_bp)
 
@@ -132,7 +133,7 @@ def api_http_error(error):
 def health():
     from database import run_query
     try:
-        migration = run_query("SELECT name FROM schema_migrations WHERE name='002_operational_tracking.sql'", fetch_one=True)
+        migration = run_query("SELECT name FROM schema_migrations WHERE name='003_vadalur_route.sql'", fetch_one=True)
         if not migration:
             return jsonify(success=False,message="Database migration pending"),503
         return jsonify(success=True,revision=os.environ.get("RENDER_GIT_COMMIT", "local"),tracking="gps")
@@ -151,6 +152,7 @@ app.register_blueprint(admin_bp)
 app.register_blueprint(drivers_bp)
 app.register_blueprint(driver_bp)
 app.register_blueprint(maps_bp)
+app.register_blueprint(route_management_bp)
 
 # Render runs Flask through Gunicorn, which imports this module rather than
 # executing it as __main__. Start the simulation here so it also runs there.

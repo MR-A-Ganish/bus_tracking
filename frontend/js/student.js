@@ -265,6 +265,10 @@ async function refreshLocationAndEta() {
     const locData = await api(`/api/buses/${myAssignment.bus_id}/location`);
     if (!locData.success) return;
     const loc = locData.location;
+    if (loc.route_id && loc.route_id !== myAssignment.route_id) {
+      window.location.reload();
+      return;
+    }
     lastLoc = loc;
 
     const badge = document.getElementById("bus-status-badge");

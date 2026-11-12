@@ -76,7 +76,7 @@ def bus_location(bus_id):
     loc = run_query(
         """SELECT bl.*, cs.stop_name AS current_stop_name, cs.distance_from_start_km AS current_stop_km,
                   ns.stop_name AS next_stop_name, ns.distance_from_start_km AS next_stop_km,
-                  b.bus_name, b.capacity, b.current_passengers
+                  b.bus_name, b.capacity, b.current_passengers, b.route_id
            FROM bus_locations bl
            JOIN buses b ON b.id = bl.bus_id
            LEFT JOIN bus_stops cs ON cs.id = bl.current_stop_id

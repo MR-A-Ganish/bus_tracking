@@ -35,6 +35,10 @@ def route_optimize():
     bus_id = request.args.get("bus_id", type=int)
     traffic_map = None
     if bus_id:
+        from services.route_optimizer import ROUTE_STOPS_IN_ORDER
+        configured = run_query("SELECT s.stop_name FROM bus_stops s JOIN buses b ON b.route_id=s.route_id WHERE b.id=%s ORDER BY s.sequence_order",(bus_id,),fetch=True)
+        if [stop["stop_name"] for stop in configured] != ROUTE_STOPS_IN_ORDER:
+            return jsonify(success=False,message="Road optimization is unavailable for this route. Pickup stops follow the order set by management.")
         loc = run_query("SELECT * FROM bus_locations WHERE bus_id=%s", (bus_id,), fetch_one=True)
         if loc:
             # apply the bus's current traffic reading to every remaining segment as a simple demo
@@ -171,6 +175,8 @@ def create_bus():
     if not bus_name or not route_id:
         return jsonify({"success": False, "message": "Bus name and route are required"}), 400
 
+    if not run_query("SELECT id FROM routes WHERE id=%s FOR SHARE",(route_id,),fetch_one=True):
+        return jsonify(success=False,message="Route not found"),404
     stops = run_query(
         "SELECT id FROM bus_stops WHERE route_id=%s ORDER BY sequence_order ASC LIMIT 2",
         (route_id,), fetch=True,
@@ -194,8 +200,25 @@ def create_bus():
 @login_required("admin")
 def update_bus(bus_id):
     data = request.get_json(force=True) or {}
-    if not run_query("SELECT id FROM buses WHERE id=%s", (bus_id,), fetch_one=True):
-        return jsonify({"success": False, "message": "Bus not found"}), 404
+    bus = run_query("SELECT * FROM buses WHERE id=%s FOR UPDATE",(bus_id,),fetch_one=True)
+    if not bus:
+        return jsonify(success=False,message="Bus not found"),404
+    route_id = data.get("route_id",bus["route_id"])
+    if route_id != bus["route_id"]:
+        if run_query("SELECT id FROM bus_trips WHERE bus_id=%s AND ended_at IS NULL",(bus_id,),fetch_one=True):
+            return jsonify(success=False,message="End this bus's active trip before changing its route"),409
+        route = run_query("SELECT id FROM routes WHERE id=%s FOR UPDATE",(route_id,),fetch_one=True)
+        stops = run_query("SELECT id FROM bus_stops WHERE route_id=%s ORDER BY sequence_order",(route_id,),fetch=True)
+        if not route or len(stops)<2:
+            return jsonify(success=False,message="Choose a route with at least two stops"),400
+        assigned = run_query("SELECT id FROM student_bus_assignments WHERE bus_id=%s LIMIT 1",(bus_id,),fetch_one=True)
+        if assigned and data.get("reset_assignments") is not True:
+            return jsonify(success=False,message="Confirm moving assigned students to the new route's starting stop, then set their pickup stops under Students"),409
+        run_query("UPDATE buses SET route_id=%s,current_passengers=0 WHERE id=%s",(route_id,bus_id),commit=True)
+        run_query("UPDATE student_bus_assignments SET stop_id=%s WHERE bus_id=%s",(stops[0]["id"],bus_id),commit=True)
+        run_query("""UPDATE bus_locations SET current_stop_id=%s,next_stop_id=%s,approach_notified_stop_id=NULL,
+                     status='not_started',distance_covered_km=0,sharing_active=FALSE,college_entry_detected=FALSE,
+                     college_entry_time=NULL WHERE bus_id=%s""",(stops[0]["id"],stops[1]["id"],bus_id),commit=True)
 
     run_query(
         """UPDATE buses SET bus_name=COALESCE(%s,bus_name), driver_name=COALESCE(%s,driver_name),

@@ -53,6 +53,7 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     btn.classList.add("active");
     document.getElementById(`tab-${btn.dataset.tab}`).classList.add("active");
     moveTabIndicator(btn);
+    if (btn.dataset.tab === "stops" && typeof initializeRouteMap === "function") initializeRouteMap();
     if (btn.dataset.tab === "map") {
       if (!fleetInitialized) initFleetMap();
       setTimeout(() => fleetMap && fleetMap.invalidateSize(), 50);
@@ -159,7 +160,11 @@ async function refreshAttendance() {
 
 async function refreshRouteOptimization() {
   const data = await api("/api/route-optimize?bus_id=1");
-  if (!data.success) return;
+  if (!data.success) {
+    document.getElementById("route-opt-summary").textContent = data.message || "Road optimization unavailable";
+    document.getElementById("route-opt-body").innerHTML = "";
+    return;
+  }
   document.getElementById("route-opt-summary").textContent =
     `Total optimized time: ${data.total_estimated_minutes} min (Dijkstra shortest-path over alternate road segments)`;
   document.getElementById("route-opt-body").innerHTML = data.optimized_path.map((seg) => `
@@ -241,11 +246,7 @@ function updateFleetMarkers(buses) {
 async function loadLookup() {
   const data = await api("/api/admin/lookup");
   lookup = { buses: data.buses || [], routes: data.routes || [], stops: data.stops || [] };
-  const stopSelector = document.getElementById("stop-coordinate-select");
-  const selectedStop = stopSelector.value;
-  stopSelector.innerHTML = lookup.stops.map(stop => `<option value="${stop.id}">Route ${stop.route_id} - ${escapeHtml(stop.stop_name)}</option>`).join("");
-  if (lookup.stops.some(stop => String(stop.id) === selectedStop)) stopSelector.value = selectedStop;
-  populateCoordinateForm();
+  if (typeof updateRouteOptions === "function") updateRouteOptions();
 
   const routeSelect = document.getElementById("bus-route");
   routeSelect.innerHTML = lookup.routes.map((r) => `<option value="${r.id}">${escapeHtml(r.route_name)}</option>`).join("");
@@ -290,6 +291,7 @@ async function refreshManageBuses() {
 
 function editBus(bus) {
   editingBusId = bus.id;
+  document.getElementById("bus-reset-assignments").checked = false;
   document.getElementById("bus-form-title").textContent = `Edit Bus: ${bus.bus_name}`;
   document.getElementById("bus-name").value = bus.bus_name;
   document.getElementById("bus-driver").value = bus.driver_name || "";
@@ -303,6 +305,7 @@ function editBus(bus) {
 function cancelBusEdit() {
   editingBusId = null;
   document.getElementById("bus-form").reset();
+  document.getElementById("bus-reset-assignments").checked = false;
   document.getElementById("bus-form-title").textContent = "Add a Bus";
   document.getElementById("bus-submit-btn").textContent = "Add Bus";
   document.getElementById("bus-cancel-btn").style.display = "none";
@@ -328,6 +331,7 @@ document.getElementById("bus-form").addEventListener("submit", async (e) => {
     driver_name: document.getElementById("bus-driver").value.trim(),
     capacity: parseInt(document.getElementById("bus-capacity").value, 10),
     route_id: parseInt(document.getElementById("bus-route").value, 10),
+    reset_assignments: document.getElementById("bus-reset-assignments").checked,
   };
   const data = editingBusId
     ? await api(`/api/admin/buses/${editingBusId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
@@ -594,38 +598,6 @@ document.getElementById("logout-btn").addEventListener("click", async () => {
   setInterval(() => refreshRouteOptimization().catch(() => {}), 8000);
   setInterval(() => refreshNotifications().catch(() => {}), 5000);
 })();
-
-
-function populateCoordinateForm() {
-  const stop = lookup.stops.find(item => item.id === Number(document.getElementById("stop-coordinate-select").value));
-  if (!stop) return;
-  document.getElementById("stop-coordinate-name").value = stop.stop_name;
-  document.getElementById("stop-coordinate-latitude").value = stop.latitude ?? "";
-  document.getElementById("stop-coordinate-longitude").value = stop.longitude ?? "";
-}
-document.getElementById("stop-coordinate-select").addEventListener("change",populateCoordinateForm);
-document.getElementById("stop-coordinate-form").addEventListener("submit",async event => {
-  event.preventDefault();
-  const button = document.getElementById("save-stop-coordinates");
-  button.disabled = true;
-  try {
-    const id = Number(document.getElementById("stop-coordinate-select").value);
-    const result = await api(`/api/admin/stops/${id}`, {
-      method:"PUT",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({ stop_name:document.getElementById("stop-coordinate-name").value.trim(),
-        latitude:Number(document.getElementById("stop-coordinate-latitude").value),
-        longitude:Number(document.getElementById("stop-coordinate-longitude").value) })
-    });
-    if (!result.success) throw new Error(result.message);
-    await loadLookup();
-    if (fleetMap) fleetMap.remove();
-    fleetMap = null;
-    fleetMarkers = {};
-    fleetInitialized = false;
-    showAlert("stop-alert",true,"Stop coordinates saved.");
-  } catch (error) { showAlert("stop-alert",false,error.message); }
-  finally { button.disabled = false; }
-});
 
 
 async function endBusTrip(busId,tripId) {

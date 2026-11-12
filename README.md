@@ -135,3 +135,18 @@ The backend pools up to five database connections per server process. Authentica
 management changes and notifications share one transaction per HTTP request. Production
 uses two workers by default. Set the total worker count within your database connection
 limit. The public health endpoint reports migration readiness and the Render commit.
+
+## Vadalur route and pickup stops
+
+The Vadalur to IFET College route starts at Vadalur Bus Stand and ends at the college.
+Its initial endpoint distance is a 54.88 km OSRM road-routing estimate. Confirm the
+college bus path, cumulative distances and entrance coordinates before operation.
+Admins choose Route Stops, select this route, and add pickup names and coordinates.
+Use each row's Map button to pick a position. Up and Down change pickup order.
+Save the complete stop list after updating cumulative distances. Historical or assigned
+stops cannot be deleted, and active trips must end before route order changes.
+
+Under Buses, edit a bus and choose its route. A route change with assigned students
+requires the checkbox that moves those assignments to the new starting stop. Then set
+each student's actual pickup stop under Students. Active trips prevent bus-route changes.
+Existing trips and bus assignments are preserved when the Vadalur route is created.

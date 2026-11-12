@@ -580,3 +580,12 @@ td.wrap { white-space: normal; }
   .metric { font-size: 22px; }
   #live-map, #fleet-map, #driver-map { height: 280px; }
 }
+
+/* Route configuration table */
+#route-stop-rows input {
+  padding: 9px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg); color: var(--text); font: inherit; min-width: 100px;
+}
+#route-stop-rows input[data-field="stop_name"] { min-width: 180px; }
+#route-stop-rows td:last-child { min-width: 220px; }
+#route-stop-rows input:focus { outline: 2px solid var(--primary); outline-offset: 1px; }

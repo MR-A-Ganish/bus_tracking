@@ -120,9 +120,9 @@ try:
             assert not conn.execute("SELECT id FROM users WHERE username='duplicate_driver'").fetchone()
         # The assignment trigger rejects mismatched route data in the same transaction.
         with connect() as conn:
-            conn.execute("INSERT INTO routes(id,route_name,start_point,end_point) VALUES (2,'Other','A','B')")
-            conn.execute("INSERT INTO bus_stops(id,route_id,stop_name,sequence_order,distance_from_start_km) VALUES (6,2,'Other stop',0,0)")
-        response = admin.post('/api/admin/students',json=dict(username='invalid_route',password='a-long-test-password',name='Test',bus_id=1,stop_id=6))
+            conn.execute("INSERT INTO routes(id,route_name,start_point,end_point) VALUES (3,'Other','A','B')")
+            conn.execute("INSERT INTO bus_stops(id,route_id,stop_name,sequence_order,distance_from_start_km) VALUES (99,3,'Other stop',0,0)")
+        response = admin.post('/api/admin/students',json=dict(username='invalid_route',password='a-long-test-password',name='Test',bus_id=1,stop_id=99))
         expect(response,409)
         with connect() as conn:
             assert not conn.execute("SELECT id FROM users WHERE username='invalid_route'").fetchone()
@@ -131,6 +131,32 @@ try:
         expect(admin.put('/api/admin/stops/2',json={'stop_name':'Invalid','latitude':91,'longitude':0}),400)
         expect(admin.post('/api/admin/buses/1/end-trip',json={'trip_id':new_trip}))
         expect(driver.post('/api/driver/location',json={**fix,'trip_id':new_trip,'recorded_at':datetime.now(timezone.utc).isoformat()}),409)
+        with connect() as conn:
+            route_id=conn.execute("SELECT id FROM routes WHERE route_name='Vadalur to IFET College'").fetchone()['id']
+            rows=conn.execute('SELECT * FROM bus_stops WHERE route_id=%s ORDER BY sequence_order',(route_id,)).fetchall()
+        def route_payload(rows):
+            return [dict(id=row['id'],stop_name=row['stop_name'],latitude=float(row['latitude']),longitude=float(row['longitude']),distance_from_start_km=float(row['distance_from_start_km'])) for row in rows]
+        route_stops=route_payload(rows)
+        route_stops.insert(1,dict(id=None,stop_name='Admin pickup',latitude=11.75,longitude=79.6,distance_from_start_km=25))
+        expect(admin.put(f'/api/admin/routes/{route_id}/stops',json={'stops':route_stops}))
+        with connect() as conn:
+            rows=conn.execute('SELECT * FROM bus_stops WHERE route_id=%s ORDER BY sequence_order',(route_id,)).fetchall()
+        assert len(rows)==3 and rows[1]['stop_name']=='Admin pickup'
+        route_stops=route_payload(rows)
+        expect(admin.put('/api/admin/buses/2',json={'route_id':route_id}))
+        assert not expect(admin.get('/api/route-optimize?bus_id=2'))['success']
+        expect(admin.put('/api/admin/buses/1',json={'route_id':route_id}),409)
+        expect(admin.put('/api/admin/buses/1',json={'route_id':route_id,'reset_assignments':True}))
+        assignment=expect(student.get('/api/students/me'))['assignment']
+        assert assignment['route_id']==route_id and assignment['stop_id']==route_stops[0]['id']
+        vadalur_trip=expect(driver.post('/api/driver/start-trip'))['trip_id']
+        expect(admin.put(f'/api/admin/routes/{route_id}/stops',json={'stops':route_stops}),409)
+        expect(admin.put('/api/admin/buses/1',json={'route_id':1,'reset_assignments':True}),409)
+        expect(driver.post('/api/driver/end-trip',json={'trip_id':vadalur_trip}))
+        removed_origin=[dict(stop) for stop in route_stops[1:]]
+        removed_origin[0]['distance_from_start_km']=0
+        expect(admin.put(f'/api/admin/routes/{route_id}/stops',json={'stops':removed_origin}),409)
+        print('PASS: Vadalur route, admin pickup stops, bus-route assignment, explicit student remapping, active-trip guards and referenced-stop protection',flush=True)
         login_client=app.test_client()
         expect(login_client.post('/api/login',json={'username':'driver','password':'integration-test-password'}))
         expect(login_client.get('/api/driver/me'))
