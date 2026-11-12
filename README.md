@@ -71,7 +71,7 @@ python backend/manage_user.py admin01 --reset-password
 ## Deployment configuration
 
 Set DATABASE_URL, SECRET_KEY, APP_ENV=production and SIMULATION_ENABLED=false in the
-hosting environment. Set TRUST_PROXY=true only behind the hosting reverse proxy. Production secrets must be at least 32 characters. Use an HTTPS
+hosting environment. Set TRUST_PROXY=true only behind the hosting reverse proxy. Preserve your existing private SECRET_KEY. For new installations, generate a random signing key. Use an HTTPS
 reverse proxy and run from the repository root on a Linux host.
 
 ```sh

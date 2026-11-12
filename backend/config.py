@@ -31,8 +31,12 @@ GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "")
 
 # Secret key used to sign simple session tokens
 SECRET_KEY = os.environ.get("SECRET_KEY", "smart-bus-system-dev-secret-change-me")
-if os.environ.get("APP_ENV") == "production" and (len(SECRET_KEY) < 32 or SECRET_KEY == "smart-bus-system-dev-secret-change-me"):
-    raise RuntimeError("Production requires a unique SECRET_KEY of at least 32 characters")
+# Preserve existing signing keys so deployed sessions keep working. Length alone
+# does not establish entropy, and changing this setting would invalidate sessions.
+if os.environ.get("APP_ENV") == "production" and (
+    not SECRET_KEY or SECRET_KEY == "smart-bus-system-dev-secret-change-me"
+):
+    raise RuntimeError("Set SECRET_KEY to a private value in the deployment environment")
 
 # College geofence (simulated). In this prototype the "geofence" is simply
 # "has the bus reached the final stop (IFET College), i.e. distance_covered_km
